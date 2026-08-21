@@ -1,0 +1,4 @@
+customtkinter>=6.0.0
+mido>=1.3.0
+python-rtmidi>=1.5.0
+pynput>=1.8.0
