@@ -2,6 +2,8 @@
 from tkinter import ttk, filedialog
 import customtkinter as ctk
 import time
+import os
+import json
 from typing import Dict, Optional
 
 from keymap_config import KeymapManager, DEFAULT_ROBLOX_61KEY_MAP, midi_note_to_name
@@ -12,6 +14,8 @@ from midi_file_player import MidiFilePlayer
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
 
 
 class PianoVisualizerCanvas(ctk.CTkFrame):
@@ -110,7 +114,7 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
 
 
 class RobloxMidiApp(ctk.CTk):
-    """Main Application Window with Integrated Hardware-Level WASAPI / ASIO Low-Latency Audio."""
+    """Main Application Window with Persistent Settings Configuration."""
 
     def __init__(self):
         super().__init__()
@@ -119,12 +123,26 @@ class RobloxMidiApp(ctk.CTk):
         self.geometry("1100 x 840")
         self.minsize(960, 720)
 
+        # Load user configuration
+        self.config = self._load_config()
+
         # Core Engines
         self.keymap_mgr = KeymapManager()
-        self.simulator = KeyboardSimulator(mode="VIRTUAL_KEY", trigger_type="HOLD")
+        self.simulator = KeyboardSimulator(
+            mode=self.config.get("input_mode", "VIRTUAL_KEY"),
+            trigger_type=self.config.get("trigger_type", "HOLD")
+        )
+        self.simulator.set_enabled(self.config.get("keystrokes_enabled", True))
+
         self.piano_engine = SalamanderGrandPianoEngine()
+        self.piano_engine.set_enabled(self.config.get("piano_sound_enabled", True))
+        self.piano_engine.set_volume(self.config.get("piano_volume", 0.85))
+
         self.engine = MidiEngine(self.keymap_mgr, self.simulator, piano_engine=self.piano_engine)
+        self.engine.transpose = self.config.get("transpose", 0)
+
         self.file_player = MidiFilePlayer(self.keymap_mgr, self.simulator, piano_engine=self.piano_engine)
+        self.file_player.transpose = self.config.get("transpose", 0)
 
         # Bind callbacks
         self.engine.on_note_on_cb = self._on_midi_note_on
@@ -138,14 +156,54 @@ class RobloxMidiApp(ctk.CTk):
         self.file_player.on_progress_cb = self._on_player_progress_updated
         self.file_player.on_playback_finished_cb = self._on_player_finished
 
-        self.logging_enabled = True
+        self.logging_enabled = self.config.get("logging_enabled", True)
 
         self._build_ui()
         self._refresh_midi_ports()
         self._refresh_audio_devices()
 
+        # Auto-connect MIDI device if previously saved and available
+        self.after(500, self._auto_connect_saved_device)
+
+    def _load_config(self) -> dict:
+        default_config = {
+            "last_midi_port": "",
+            "last_audio_device": "",
+            "piano_sound_enabled": True,
+            "piano_volume": 0.85,
+            "keystrokes_enabled": True,
+            "transpose": 0,
+            "logging_enabled": True,
+            "input_mode": "VIRTUAL_KEY",
+            "trigger_type": "HOLD",
+            "auto_connect": True
+        }
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    default_config.update(loaded)
+            except Exception as e:
+                print(f"Error loading config: {e}")
+        return default_config
+
+    def _save_config(self):
+        try:
+            self.config["last_midi_port"] = self.port_dropdown.get()
+            self.config["last_audio_device"] = self.audio_dev_dropdown.get()
+            self.config["piano_sound_enabled"] = bool(self.piano_switch.get())
+            self.config["piano_volume"] = float(self.vol_slider.get())
+            self.config["keystrokes_enabled"] = bool(self.enable_switch.get())
+            self.config["transpose"] = int(self.transpose_slider.get())
+            self.config["logging_enabled"] = bool(self.log_checkbox.get())
+            self.config["auto_connect"] = bool(self.auto_connect_checkbox.get())
+
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=4)
+        except Exception as e:
+            print(f"Error saving config: {e}")
+
     def _build_ui(self):
-        # Header Bar
         header_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="#1F1F2E")
         header_frame.pack(fill="x", padx=15, pady=(15, 8))
 
@@ -165,11 +223,10 @@ class RobloxMidiApp(ctk.CTk):
         )
         self.status_badge.pack(side="right", padx=15, pady=10)
 
-        # Main Layout
         main_content = ctk.CTkFrame(self, fg_color="transparent")
         main_content.pack(fill="both", expand=True, padx=15, pady=5)
 
-        # Left Column (Device & Controls)
+        # Left Column (Controls & Settings)
         left_col = ctk.CTkFrame(main_content, width=380, corner_radius=10, fg_color="#1E1E2A")
         left_col.pack(side="left", fill="y", padx=(0, 10), pady=5)
         left_col.pack_propagate(False)
@@ -181,11 +238,11 @@ class RobloxMidiApp(ctk.CTk):
         conn_title = ctk.CTkLabel(conn_box, text="MIDI INPUT DEVICE", font=ctk.CTkFont(size=12, weight="bold"), text_color="#A0A0B0")
         conn_title.pack(anchor="w", padx=10, pady=(8, 4))
 
-        self.port_dropdown = ctk.CTkComboBox(conn_box, values=["Searching..."], height=32)
+        self.port_dropdown = ctk.CTkComboBox(conn_box, values=["Searching..."], height=32, command=lambda _: self._save_config())
         self.port_dropdown.pack(fill="x", padx=10, pady=4)
 
         btn_row = ctk.CTkFrame(conn_box, fg_color="transparent")
-        btn_row.pack(fill="x", padx=10, pady=(4, 8))
+        btn_row.pack(fill="x", padx=10, pady=(4, 4))
 
         self.refresh_btn = ctk.CTkButton(btn_row, text="🔄 Refresh", width=90, height=32, command=self._refresh_midi_ports)
         self.refresh_btn.pack(side="left", padx=(0, 5))
@@ -196,6 +253,15 @@ class RobloxMidiApp(ctk.CTk):
             command=self._toggle_connection
         )
         self.connect_btn.pack(side="left", fill="x", expand=True)
+
+        self.auto_connect_checkbox = ctk.CTkCheckBox(
+            conn_box, text="Auto-Connect on Startup",
+            font=ctk.CTkFont(size=11),
+            command=self._save_config
+        )
+        if self.config.get("auto_connect", True):
+            self.auto_connect_checkbox.select()
+        self.auto_connect_checkbox.pack(anchor="w", padx=10, pady=(2, 8))
 
         # Yamaha C5 Acoustic Grand Piano Card
         piano_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
@@ -208,25 +274,26 @@ class RobloxMidiApp(ctk.CTk):
             piano_box, text="Enable Direct Grand Piano Sound",
             command=self._toggle_piano_sound
         )
-        self.piano_switch.select()
+        if self.config.get("piano_sound_enabled", True):
+            self.piano_switch.select()
+        else:
+            self.piano_switch.deselect()
         self.piano_switch.pack(anchor="w", padx=10, pady=4)
 
-        # Audio Output Device Selection
         dev_label = ctk.CTkLabel(piano_box, text="Audio Device (WASAPI Low-Latency):", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
         dev_label.pack(anchor="w", padx=10, pady=(4, 0))
 
         self.audio_dev_dropdown = ctk.CTkComboBox(piano_box, values=["Loading..."], height=28, command=self._on_audio_device_changed)
         self.audio_dev_dropdown.pack(fill="x", padx=10, pady=(2, 4))
 
-        # Volume Slider
         vol_label = ctk.CTkLabel(piano_box, text="Piano Volume:", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
         vol_label.pack(anchor="w", padx=10, pady=(2, 0))
 
         self.vol_slider = ctk.CTkSlider(piano_box, from_=0.0, to=1.0, number_of_steps=20, command=self._on_volume_changed)
-        self.vol_slider.set(0.85)
+        self.vol_slider.set(self.config.get("piano_volume", 0.85))
         self.vol_slider.pack(fill="x", padx=10, pady=(2, 8))
 
-        # Output Settings Card
+        # Keyboard Mapping Card
         settings_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
         settings_box.pack(fill="x", padx=10, pady=5)
 
@@ -237,25 +304,29 @@ class RobloxMidiApp(ctk.CTk):
             settings_box, text="Simulate Keystrokes (F8 Toggle)",
             command=self._on_switch_toggled
         )
-        self.enable_switch.select()
+        if self.config.get("keystrokes_enabled", True):
+            self.enable_switch.select()
+        else:
+            self.enable_switch.deselect()
         self.enable_switch.pack(anchor="w", padx=10, pady=4)
 
-        # Transpose Slider
         transpose_frame = ctk.CTkFrame(settings_box, fg_color="transparent")
         transpose_frame.pack(fill="x", padx=10, pady=4)
 
         ctk.CTkLabel(transpose_frame, text="Transpose:", font=ctk.CTkFont(size=12)).pack(side="left")
-        self.transpose_val_label = ctk.CTkLabel(transpose_frame, text="0 Semi", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF")
+        trans_val = self.config.get("transpose", 0)
+        sign = "+" if trans_val > 0 else ""
+        self.transpose_val_label = ctk.CTkLabel(transpose_frame, text=f"{sign}{trans_val} Semi", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF")
         self.transpose_val_label.pack(side="right")
 
         self.transpose_slider = ctk.CTkSlider(
             settings_box, from_=-24, to=24, number_of_steps=48,
             command=self._on_transpose_changed
         )
-        self.transpose_slider.set(0)
+        self.transpose_slider.set(trans_val)
         self.transpose_slider.pack(fill="x", padx=10, pady=(2, 8))
 
-        # Right Column (Piano Visualizer, MIDI File Player, Logs)
+        # Right Column
         right_col = ctk.CTkFrame(main_content, corner_radius=10, fg_color="#1E1E2A")
         right_col.pack(side="right", fill="both", expand=True, pady=5)
 
@@ -266,7 +337,7 @@ class RobloxMidiApp(ctk.CTk):
         self.visualizer = PianoVisualizerCanvas(right_col, self.keymap_mgr, height=130, corner_radius=8, fg_color="#181824")
         self.visualizer.pack(fill="x", padx=15, pady=(0, 10))
 
-        # MIDI File Player Section
+        # MIDI File Player
         player_box = ctk.CTkFrame(right_col, corner_radius=8, fg_color="#252538")
         player_box.pack(fill="x", padx=15, pady=(0, 10))
 
@@ -296,7 +367,6 @@ class RobloxMidiApp(ctk.CTk):
         self.sheet_btn = ctk.CTkButton(controls_row, text="🎼 View Sheet Text", width=130, height=28, fg_color="#6C757D", hover_color="#5A6268", command=self._view_sheet_notation)
         self.sheet_btn.pack(side="right")
 
-        # Progress Bar
         progress_row = ctk.CTkFrame(player_box, fg_color="transparent")
         progress_row.pack(fill="x", padx=10, pady=(2, 8))
 
@@ -307,51 +377,75 @@ class RobloxMidiApp(ctk.CTk):
         self.time_label = ctk.CTkLabel(progress_row, text="00:00 / 00:00", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
         self.time_label.pack(side="right")
 
-        # MIDI Log Console
+        # Logs Console
         log_header = ctk.CTkFrame(right_col, fg_color="transparent")
         log_header.pack(fill="x", padx=15, pady=(5, 2))
 
         ctk.CTkLabel(log_header, text="EVENT LOGS", font=ctk.CTkFont(size=12, weight="bold"), text_color="#A0A0B0").pack(side="left")
 
         self.log_checkbox = ctk.CTkCheckBox(log_header, text="Enable Logging", command=self._toggle_logging)
-        self.log_checkbox.select()
+        if self.logging_enabled:
+            self.log_checkbox.select()
+        else:
+            self.log_checkbox.deselect()
         self.log_checkbox.pack(side="right")
 
         self.log_textbox = ctk.CTkTextbox(right_col, height=130, font=("Consolas", 11), fg_color="#14141E", text_color="#00FF66")
         self.log_textbox.pack(fill="both", expand=True, padx=15, pady=(0, 10))
+
+    def _auto_connect_saved_device(self):
+        saved_port = self.config.get("last_midi_port")
+        auto_conn = self.config.get("auto_connect", True)
+        if auto_conn and saved_port and saved_port in self.port_dropdown.cget("values"):
+            self.port_dropdown.set(saved_port)
+            self._toggle_connection()
 
     def _refresh_audio_devices(self):
         self.audio_devices = get_low_latency_output_devices()
         if self.audio_devices:
             names = [name for _, name in self.audio_devices]
             self.audio_dev_dropdown.configure(values=names)
-            self.audio_dev_dropdown.set(names[0])
-            self.log_message(f"Active WASAPI hardware audio: {names[0]}")
+
+            saved_audio = self.config.get("last_audio_device")
+            if saved_audio and saved_audio in names:
+                self.audio_dev_dropdown.set(saved_audio)
+                self._on_audio_device_changed(saved_audio)
+            else:
+                self.audio_dev_dropdown.set(names[0])
+                self._on_audio_device_changed(names[0])
 
     def _on_audio_device_changed(self, chosen_name: str):
         for dev_id, name in self.audio_devices:
             if name == chosen_name:
                 self.piano_engine.set_device(dev_id)
-                self.log_message(f"Switched hardware audio output to: {chosen_name}")
+                self._save_config()
+                self.log_message(f"Active WASAPI hardware audio: {chosen_name}")
                 break
 
     def _toggle_piano_sound(self):
         enabled = bool(self.piano_switch.get())
         self.piano_engine.set_enabled(enabled)
+        self._save_config()
         state_str = "ENABLED" if enabled else "DISABLED"
         self.log_message(f"Yamaha C5 Direct Audio: {state_str}")
 
     def _on_volume_changed(self, val):
         self.piano_engine.set_volume(float(val))
+        self._save_config()
 
     def _toggle_logging(self):
         self.logging_enabled = bool(self.log_checkbox.get())
+        self._save_config()
 
     def _refresh_midi_ports(self):
         ports = get_available_midi_ports()
         if ports:
             self.port_dropdown.configure(values=ports)
-            self.port_dropdown.set(ports[0])
+            saved_port = self.config.get("last_midi_port")
+            if saved_port and saved_port in ports:
+                self.port_dropdown.set(saved_port)
+            else:
+                self.port_dropdown.set(ports[0])
             self.log_message(f"Found {len(ports)} MIDI device(s): {', '.join(ports)}")
         else:
             self.port_dropdown.configure(values=["No Devices Found"])
@@ -368,6 +462,7 @@ class RobloxMidiApp(ctk.CTk):
             if selected_port and selected_port != "No Devices Found":
                 success = self.engine.start(selected_port)
                 if success:
+                    self._save_config()
                     self.connect_btn.configure(text="Disconnect", fg_color="#DC3545", hover_color="#C82333")
                     self.status_badge.configure(text="● CONNECTED & LISTENING", text_color="#00E5FF")
             else:
@@ -376,16 +471,19 @@ class RobloxMidiApp(ctk.CTk):
     def _on_switch_toggled(self):
         enabled = bool(self.enable_switch.get())
         self.simulator.set_enabled(enabled)
+        self._save_config()
         state_str = "ENABLED" if enabled else "MUTED"
         self.log_message(f"Mapping switch changed to: {state_str}")
 
     def _on_toggle_state_changed(self, enabled: bool):
         self.after(0, lambda: self.enable_switch.select() if enabled else self.enable_switch.deselect())
+        self._save_config()
 
     def _on_transpose_changed(self, val):
         semitones = int(val)
         self.engine.transpose = semitones
         self.file_player.transpose = semitones
+        self._save_config()
         sign = "+" if semitones > 0 else ""
         self.transpose_val_label.configure(text=f"{sign}{semitones} Semi")
         self.visualizer._draw_keyboard()
@@ -395,7 +493,6 @@ class RobloxMidiApp(ctk.CTk):
         if file_path:
             success = self.file_player.load_file(file_path)
             if success:
-                import os
                 fname = os.path.basename(file_path)
                 self.file_label.configure(text=fname)
                 self.time_label.configure(text=f"00:00 / {MidiFilePlayer.format_time(self.file_player.total_duration)}")
@@ -456,6 +553,7 @@ class RobloxMidiApp(ctk.CTk):
         self.log_textbox.see("end")
 
     def on_closing(self):
+        self._save_config()
         self.file_player.stop()
         self.engine.stop()
         if self.piano_engine:
