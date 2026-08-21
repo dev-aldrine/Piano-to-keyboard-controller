@@ -1,0 +1,12 @@
+{
+    "last_midi_port": "CASIO USB-MIDI",
+    "last_audio_device": "Realtek HD Audio 2nd output (Realtek(R) Audio) [Windows WASAPI]",
+    "piano_sound_enabled": true,
+    "piano_volume": 0.85,
+    "keystrokes_enabled": true,
+    "transpose": 0,
+    "logging_enabled": true,
+    "input_mode": "VIRTUAL_KEY",
+    "trigger_type": "HOLD",
+    "auto_connect": true
+}
