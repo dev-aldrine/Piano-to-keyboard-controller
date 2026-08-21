@@ -124,7 +124,7 @@ class RobloxMidiApp(ctk.CTk):
         self.simulator = KeyboardSimulator(mode="VIRTUAL_KEY", trigger_type="HOLD")
         self.piano_engine = SalamanderGrandPianoEngine()
         self.engine = MidiEngine(self.keymap_mgr, self.simulator, piano_engine=self.piano_engine)
-        self.file_player = MidiFilePlayer(self.keymap_mgr, self.simulator)
+        self.file_player = MidiFilePlayer(self.keymap_mgr, self.simulator, piano_engine=self.piano_engine)
 
         # Bind callbacks
         self.engine.on_note_on_cb = self._on_midi_note_on
@@ -151,7 +151,7 @@ class RobloxMidiApp(ctk.CTk):
 
         title_label = ctk.CTkLabel(
             header_frame,
-            text="🎹 Roblox MIDI Mapper + Yamaha C5 (WASAPI / ASIO <3ms)",
+            text="🎹 Roblox MIDI Mapper + Yamaha C5 (WASAPI Low-Latency)",
             font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
             text_color="#00E5FF"
         )
@@ -212,7 +212,7 @@ class RobloxMidiApp(ctk.CTk):
         self.piano_switch.pack(anchor="w", padx=10, pady=4)
 
         # Audio Output Device Selection
-        dev_label = ctk.CTkLabel(piano_box, text="Hardware Audio Device (WASAPI/ASIO):", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
+        dev_label = ctk.CTkLabel(piano_box, text="Audio Device (WASAPI Low-Latency):", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
         dev_label.pack(anchor="w", padx=10, pady=(4, 0))
 
         self.audio_dev_dropdown = ctk.CTkComboBox(piano_box, values=["Loading..."], height=28, command=self._on_audio_device_changed)
@@ -326,13 +326,13 @@ class RobloxMidiApp(ctk.CTk):
             names = [name for _, name in self.audio_devices]
             self.audio_dev_dropdown.configure(values=names)
             self.audio_dev_dropdown.set(names[0])
-            self.log_message(f"Selected low-latency audio driver: {names[0]}")
+            self.log_message(f"Active WASAPI hardware audio: {names[0]}")
 
     def _on_audio_device_changed(self, chosen_name: str):
         for dev_id, name in self.audio_devices:
             if name == chosen_name:
                 self.piano_engine.set_device(dev_id)
-                self.log_message(f"Switched hardware audio driver to: {chosen_name}")
+                self.log_message(f"Switched hardware audio output to: {chosen_name}")
                 break
 
     def _toggle_piano_sound(self):
