@@ -7,7 +7,6 @@ import soundfile as sf
 from typing import Dict, Optional, Tuple, List
 
 def get_all_output_devices() -> List[Tuple[int, str]]:
-    '''Returns all audio output devices.'''
     try:
         apis = sd.query_hostapis()
         devices = []
@@ -21,7 +20,6 @@ def get_all_output_devices() -> List[Tuple[int, str]]:
         return []
 
 def get_low_latency_output_devices() -> List[Tuple[int, str]]:
-    '''Returns audio output devices prioritized by lowest hardware latency (WASAPI / WDM-KS / ASIO).'''
     try:
         apis = sd.query_hostapis()
         devices = []
@@ -39,7 +37,7 @@ def get_low_latency_output_devices() -> List[Tuple[int, str]]:
         return []
 
 class SalamanderGrandPianoEngine:
-    '''Hardware-accelerated low-latency Yamaha C5 engine supporting Dual Audio Outputs (Headphones + Virtual Mic).'''
+    '''Hardware-accelerated low-latency Yamaha C5 engine supporting clean Dual Audio Outputs.'''
 
     def __init__(self, sample_dir: Optional[str] = None, sample_rate: int = 48000, device_id: Optional[int] = None):
         self.sr = sample_rate
@@ -50,12 +48,12 @@ class SalamanderGrandPianoEngine:
         self.samples: Dict[int, Dict[str, np.ndarray]] = {}
         self.active_voices: Dict[int, list] = {}
         self.lock = threading.Lock()
-        self.volume: float = 0.85
+        self.volume: float = 0.70
         self.enabled: bool = True
         self.sustain_pedal: bool = False
         self.sustained_released_notes: set = set()
 
-        # Primary stream (Monitoring / Headphones)
+        # Primary stream (Headphones / Monitoring)
         self.stream: Optional[sd.OutputStream] = None
         if device_id is None:
             devs = get_low_latency_output_devices()
@@ -67,7 +65,7 @@ class SalamanderGrandPianoEngine:
         self.virtual_mic_enabled: bool = False
         self.virtual_mic_device_id: Optional[int] = None
         self.virtual_mic_stream: Optional[sd.OutputStream] = None
-        self.virtual_mic_volume: float = 0.85
+        self.virtual_mic_volume: float = 0.50
 
         self._load_samples_into_ram()
         self._start_audio_stream()
@@ -145,8 +143,7 @@ class SalamanderGrandPianoEngine:
                 channels=2,
                 dtype='float32',
                 device=self.device_id,
-                blocksize=64,
-                latency='low',
+                blocksize=128,
                 callback=self._audio_callback
             )
             self.stream.start()
@@ -156,7 +153,7 @@ class SalamanderGrandPianoEngine:
                     samplerate=44100,
                     channels=2,
                     dtype='float32',
-                    blocksize=128,
+                    blocksize=256,
                     callback=self._audio_callback
                 )
                 self.stream.start()
@@ -176,17 +173,20 @@ class SalamanderGrandPianoEngine:
             return
 
         try:
+            # Query device channels
+            dev_info = sd.query_devices(self.virtual_mic_device_id)
+            channels = min(2, dev_info['max_output_channels'])
             self.virtual_mic_stream = sd.OutputStream(
                 samplerate=self.sr,
-                channels=2,
+                channels=channels,
                 dtype='float32',
                 device=self.virtual_mic_device_id,
-                blocksize=128,
+                blocksize=256,
                 callback=self._virtual_mic_audio_callback
             )
             self.virtual_mic_stream.start()
         except Exception as e:
-            print(f'Warning: Could not start virtual mic output stream: {e}')
+            print(f'Warning: Could not start virtual mic stream: {e}')
             self.virtual_mic_stream = None
 
     def set_virtual_mic_device(self, device_id: Optional[int]):
@@ -214,67 +214,91 @@ class SalamanderGrandPianoEngine:
         self.device_id = device_id
         self._start_audio_stream()
 
-    def _render_audio_buffer(self, frames: int, advance_voices: bool = True) -> np.ndarray:
-        out = np.zeros((frames, 2), dtype=np.float32)
-        dead_notes = []
-        for note, voices in list(self.active_voices.items()):
-            alive_voices = []
-            for v in voices:
-                audio = v['audio']
-                pos = v['pos']
-                total_len = len(audio)
-                if pos >= total_len:
-                    continue
-
-                end_pos = min(pos + frames, total_len)
-                avail = end_pos - pos
-                chunk = audio[pos:end_pos] * v['gain']
-
-                if not v['is_on']:
-                    rel_frames = np.arange(v['rel_pos'], v['rel_pos'] + avail)
-                    decay = np.exp(-rel_frames / 3500.0)
-                    chunk = chunk * decay[:, np.newaxis]
-                    if advance_voices:
-                        v['rel_pos'] += avail
-                    if decay[-1] < 0.005:
-                        continue
-
-                out[:avail] += chunk
-                if advance_voices:
-                    v['pos'] += avail
-
-                if v['pos'] < total_len:
-                    alive_voices.append(v)
-
-            if alive_voices:
-                if advance_voices:
-                    self.active_voices[note] = alive_voices
-            else:
-                dead_notes.append(note)
-
-        if advance_voices:
-            for d in dead_notes:
-                if d in self.active_voices:
-                    del self.active_voices[d]
-
-        return np.clip(out, -1.0, 1.0)
-
     def _audio_callback(self, outdata, frames, time_info, status):
         if not self.enabled:
             outdata.fill(0.0)
             return
 
+        out = np.zeros((frames, 2), dtype=np.float32)
         with self.lock:
-            # Advance voices on primary output stream
-            outdata[:] = self._render_audio_buffer(frames, advance_voices=True)
+            dead_notes = []
+            for note, voices in list(self.active_voices.items()):
+                alive_voices = []
+                for v in voices:
+                    audio = v['audio']
+                    pos = v['pos_main']
+                    total_len = len(audio)
+                    if pos >= total_len:
+                        continue
+
+                    end_pos = min(pos + frames, total_len)
+                    avail = end_pos - pos
+                    chunk = audio[pos:end_pos] * v['gain'] * self.volume
+
+                    if not v['is_on']:
+                        rel_frames = np.arange(v['rel_pos_main'], v['rel_pos_main'] + avail)
+                        decay = np.exp(-rel_frames / 4000.0)
+                        chunk = chunk * decay[:, np.newaxis]
+                        v['rel_pos_main'] += avail
+                        if decay[-1] < 0.002:
+                            continue
+
+                    out[:avail] += chunk
+                    v['pos_main'] += avail
+
+                    if v['pos_main'] < total_len or (self.virtual_mic_enabled and v['pos_vmic'] < total_len):
+                        alive_voices.append(v)
+
+                if alive_voices:
+                    self.active_voices[note] = alive_voices
+                else:
+                    dead_notes.append(note)
+
+            for d in dead_notes:
+                if d in self.active_voices:
+                    del self.active_voices[d]
+
+        # Soft limiter (prevents harsh distortion/clipping on chords)
+        out = np.tanh(out * 0.95)
+        outdata[:] = out
 
     def _virtual_mic_audio_callback(self, outdata, frames, time_info, status):
         if not self.enabled or not self.virtual_mic_enabled:
             outdata.fill(0.0)
             return
 
+        out = np.zeros((frames, 2), dtype=np.float32)
         with self.lock:
-            outdata[:] = self._render_audio_buffer(frames, advance_voices=False) * self.virtual_mic_volume
+            for note, voices in list(self.active_voices.items()):
+                for v in voices:
+                    audio = v['audio']
+                    pos = v['pos_vmic']
+                    total_len = len(audio)
+                    if pos >= total_len:
+                        continue
+
+                    end_pos = min(pos + frames, total_len)
+                    avail = end_pos - pos
+                    chunk = audio[pos:end_pos] * v['gain'] * self.virtual_mic_volume
+
+                    if not v['is_on']:
+                        rel_frames = np.arange(v['rel_pos_vmic'], v['rel_pos_vmic'] + avail)
+                        decay = np.exp(-rel_frames / 4000.0)
+                        chunk = chunk * decay[:, np.newaxis]
+                        v['rel_pos_vmic'] += avail
+                        if decay[-1] < 0.002:
+                            continue
+
+                    out[:avail] += chunk
+                    v['pos_vmic'] += avail
+
+        # Clean soft limiter to prevent distortion on mic input
+        out = np.tanh(out * 0.85)
+        ch = outdata.shape[1]
+        if ch == 1:
+            outdata[:] = out[:, 0:1]
+        else:
+            outdata[:] = out[:, :ch]
 
     def set_sustain_pedal(self, is_pressed: bool):
         with self.lock:
@@ -298,7 +322,7 @@ class SalamanderGrandPianoEngine:
             return
 
         audio = self.samples[note][vel_layer]
-        gain = (velocity / 127.0) * self.volume
+        gain = (velocity / 127.0)
 
         with self.lock:
             if note in self.sustained_released_notes:
@@ -308,10 +332,12 @@ class SalamanderGrandPianoEngine:
                 self.active_voices[note] = []
             self.active_voices[note].append({
                 'audio': audio,
-                'pos': 0,
+                'pos_main': 0,
+                'pos_vmic': 0,
                 'is_on': True,
                 'gain': gain,
-                'rel_pos': 0
+                'rel_pos_main': 0,
+                'rel_pos_vmic': 0
             })
 
     def note_off(self, note: int):
