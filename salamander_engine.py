@@ -4,25 +4,51 @@ import threading
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
+
+def get_low_latency_output_devices() -> List[Tuple[int, str]]:
+    '''Returns audio output devices prioritized by lowest hardware latency (WASAPI / WDM-KS / ASIO).'''
+    try:
+        apis = sd.query_hostapis()
+        devices = []
+        for i, d in enumerate(sd.query_devices()):
+            if d['max_output_channels'] > 0:
+                api_name = apis[d['hostapi']]['name']
+                d_name = d['name']
+                if api_name in ['Windows WASAPI', 'ASIO', 'Windows WDM-KS']:
+                    devices.append((i, f'{d_name} [{api_name}]'))
+        
+        if not devices:
+            for i, d in enumerate(sd.query_devices()):
+                if d['max_output_channels'] > 0:
+                    devices.append((i, d['name']))
+        return devices
+    except Exception:
+        return []
 
 class SalamanderGrandPianoEngine:
-    '''Zero-latency in-memory streaming engine for authentic Yamaha C5 Salamander Grand Piano samples.'''
+    '''Hardware-accelerated WASAPI/ASIO low-latency in-memory Yamaha C5 Salamander engine with real Sustain Pedal support.'''
 
-    def __init__(self, sample_dir: Optional[str] = None, sample_rate: int = 44100, device_id: Optional[int] = None):
+    def __init__(self, sample_dir: Optional[str] = None, sample_rate: int = 48000, device_id: Optional[int] = None):
         self.sr = sample_rate
-        self.device_id = device_id
         if sample_dir is None:
             sample_dir = os.path.join(os.path.dirname(__file__), 'samples', 'salamander')
         self.sample_dir = sample_dir
 
         self.samples: Dict[int, Dict[str, np.ndarray]] = {}
         self.active_voices: Dict[int, list] = {}
-        self.voice_id_counter = 0
         self.lock = threading.Lock()
         self.volume: float = 0.85
         self.enabled: bool = True
+        self.sustain_pedal: bool = False
+        self.sustained_released_notes: set = set()
         self.stream: Optional[sd.OutputStream] = None
+
+        if device_id is None:
+            devs = get_low_latency_output_devices()
+            self.device_id = devs[0][0] if devs else None
+        else:
+            self.device_id = device_id
 
         self._load_samples_into_ram()
         self._start_audio_stream()
@@ -42,7 +68,6 @@ class SalamanderGrandPianoEngine:
         return (octave + 1) * 12 + semis[note_letter] + acc
 
     def _load_samples_into_ram(self):
-        '''Pre-loads and pitch-stretches all samples into memory so there is 0ms disk access during playing.'''
         flac_files = glob.glob(os.path.join(self.sample_dir, '*.flac'))
         loaded_anchors = {}
 
@@ -53,24 +78,19 @@ class SalamanderGrandPianoEngine:
             try:
                 midi_num = self._note_name_to_midi(note_str)
                 data, orig_sr = sf.read(fpath, dtype='float32')
-                # Resample or take stereo
                 if len(data.shape) == 1:
                     data = np.column_stack((data, data))
-                
                 if midi_num not in loaded_anchors:
                     loaded_anchors[midi_num] = {}
                 loaded_anchors[midi_num][vel] = data
-            except Exception as e:
+            except Exception:
                 pass
 
-        # Map all 128 MIDI notes to the closest recorded anchor note
         anchor_notes = sorted(loaded_anchors.keys())
         if not anchor_notes:
-            print('Warning: No Salamander samples loaded.')
             return
 
-        for note in range(21, 109):  # Full 88-key piano range
-            # Find nearest anchor
+        for note in range(21, 109):
             best_anchor = min(anchor_notes, key=lambda a: abs(a - note))
             semi_diff = note - best_anchor
             pitch_ratio = 2.0 ** (semi_diff / 12.0)
@@ -82,7 +102,6 @@ class SalamanderGrandPianoEngine:
                     if semi_diff == 0:
                         self.samples[note][vel_layer] = base_audio
                     else:
-                        # High-quality linear pitch interpolation
                         orig_len = len(base_audio)
                         new_len = int(orig_len / pitch_ratio)
                         if new_len > 0:
@@ -93,23 +112,41 @@ class SalamanderGrandPianoEngine:
                         else:
                             self.samples[note][vel_layer] = base_audio
 
-        print(f'Successfully loaded {len(self.samples)} acoustic Yamaha C5 notes into RAM!')
-
     def _start_audio_stream(self):
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+
         try:
-            dev = self.device_id if self.device_id is not None else 4
             self.stream = sd.OutputStream(
-                samplerate=48000,
+                samplerate=self.sr,
                 channels=2,
                 dtype='float32',
-                device=dev,
-                blocksize=128,  # Ultra-low buffer size for sub-millisecond playback
+                device=self.device_id,
+                blocksize=64,
+                latency='low',
                 callback=self._audio_callback
             )
             self.stream.start()
         except Exception as e:
-            print(f'Error starting Salamander audio stream: {e}')
-            self.stream = None
+            try:
+                self.stream = sd.OutputStream(
+                    samplerate=44100,
+                    channels=2,
+                    dtype='float32',
+                    blocksize=128,
+                    callback=self._audio_callback
+                )
+                self.stream.start()
+            except Exception:
+                self.stream = None
+
+    def set_device(self, device_id: int):
+        self.device_id = device_id
+        self._start_audio_stream()
 
     def _audio_callback(self, outdata, frames, time_info, status):
         if not self.enabled:
@@ -133,10 +170,9 @@ class SalamanderGrandPianoEngine:
 
                     chunk = audio[pos:end_pos] * v['gain']
 
-                    # Apply release fadeout if note was released
                     if not v['is_on']:
                         rel_frames = np.arange(v['rel_pos'], v['rel_pos'] + avail)
-                        decay = np.exp(-rel_frames / 4000.0)  # Smooth natural acoustic damper damping
+                        decay = np.exp(-rel_frames / 3500.0)
                         chunk = chunk * decay[:, np.newaxis]
                         v['rel_pos'] += avail
                         if decay[-1] < 0.005:
@@ -159,8 +195,19 @@ class SalamanderGrandPianoEngine:
 
         outdata[:] = np.clip(out, -1.0, 1.0)
 
+    def set_sustain_pedal(self, is_pressed: bool):
+        '''Handles CC64 sustain pedal state transitions in real time.'''
+        with self.lock:
+            self.sustain_pedal = is_pressed
+            if not is_pressed:
+                # Release all notes that were physically let go while pedal was held down
+                for note in list(self.sustained_released_notes):
+                    if note in self.active_voices:
+                        for v in self.active_voices[note]:
+                            v['is_on'] = False
+                self.sustained_released_notes.clear()
+
     def note_on(self, note: int, velocity: int = 100):
-        '''Triggers true acoustic Yamaha C5 sample from RAM with 0ms delay.'''
         if not self.enabled or note not in self.samples:
             return
 
@@ -175,6 +222,9 @@ class SalamanderGrandPianoEngine:
         gain = (velocity / 127.0) * self.volume
 
         with self.lock:
+            if note in self.sustained_released_notes:
+                self.sustained_released_notes.discard(note)
+
             if note not in self.active_voices:
                 self.active_voices[note] = []
             self.active_voices[note].append({
@@ -186,11 +236,14 @@ class SalamanderGrandPianoEngine:
             })
 
     def note_off(self, note: int):
-        '''Applies natural acoustic string damper to the ringing note.'''
         with self.lock:
-            if note in self.active_voices:
-                for v in self.active_voices[note]:
-                    v['is_on'] = False
+            if self.sustain_pedal:
+                # Keep note ringing until sustain pedal is released
+                self.sustained_released_notes.add(note)
+            else:
+                if note in self.active_voices:
+                    for v in self.active_voices[note]:
+                        v['is_on'] = False
 
     def set_volume(self, volume: float):
         self.volume = max(0.0, min(volume, 1.0))
@@ -203,6 +256,7 @@ class SalamanderGrandPianoEngine:
     def stop_all(self):
         with self.lock:
             self.active_voices.clear()
+            self.sustained_released_notes.clear()
 
     def close(self):
         if self.stream:

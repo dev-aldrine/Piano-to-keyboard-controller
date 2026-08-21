@@ -6,7 +6,7 @@ from typing import Dict, Optional
 
 from keymap_config import KeymapManager, DEFAULT_ROBLOX_61KEY_MAP, midi_note_to_name
 from keyboard_simulator import KeyboardSimulator
-from salamander_engine import SalamanderGrandPianoEngine
+from salamander_engine import SalamanderGrandPianoEngine, get_low_latency_output_devices
 from midi_engine import MidiEngine, get_available_midi_ports
 from midi_file_player import MidiFilePlayer
 
@@ -110,14 +110,14 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
 
 
 class RobloxMidiApp(ctk.CTk):
-    """Main Application Window with Integrated Zero-Latency Yamaha C5 Acoustic Grand Piano Engine."""
+    """Main Application Window with Integrated Hardware-Level WASAPI / ASIO Low-Latency Audio."""
 
     def __init__(self):
         super().__init__()
 
         self.title("Roblox MIDI Keyboard Mapper & Yamaha C5 Grand Piano Player")
-        self.geometry("1100 x 820")
-        self.minsize(960, 700)
+        self.geometry("1100 x 840")
+        self.minsize(960, 720)
 
         # Core Engines
         self.keymap_mgr = KeymapManager()
@@ -142,6 +142,7 @@ class RobloxMidiApp(ctk.CTk):
 
         self._build_ui()
         self._refresh_midi_ports()
+        self._refresh_audio_devices()
 
     def _build_ui(self):
         # Header Bar
@@ -150,7 +151,7 @@ class RobloxMidiApp(ctk.CTk):
 
         title_label = ctk.CTkLabel(
             header_frame,
-            text="🎹 Roblox MIDI Mapper + Yamaha C5 Acoustic Grand Piano",
+            text="🎹 Roblox MIDI Mapper + Yamaha C5 (WASAPI / ASIO <3ms)",
             font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
             text_color="#00E5FF"
         )
@@ -169,7 +170,7 @@ class RobloxMidiApp(ctk.CTk):
         main_content.pack(fill="both", expand=True, padx=15, pady=5)
 
         # Left Column (Device & Controls)
-        left_col = ctk.CTkFrame(main_content, width=370, corner_radius=10, fg_color="#1E1E2A")
+        left_col = ctk.CTkFrame(main_content, width=380, corner_radius=10, fg_color="#1E1E2A")
         left_col.pack(side="left", fill="y", padx=(0, 10), pady=5)
         left_col.pack_propagate(False)
 
@@ -200,7 +201,7 @@ class RobloxMidiApp(ctk.CTk):
         piano_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
         piano_box.pack(fill="x", padx=10, pady=5)
 
-        piano_title = ctk.CTkLabel(piano_box, text="🎧 YAMAHA C5 DIRECT AUDIO (0ms Latency)", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF")
+        piano_title = ctk.CTkLabel(piano_box, text="🎧 YAMAHA C5 DIRECT AUDIO", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF")
         piano_title.pack(anchor="w", padx=10, pady=(8, 2))
 
         self.piano_switch = ctk.CTkSwitch(
@@ -209,6 +210,13 @@ class RobloxMidiApp(ctk.CTk):
         )
         self.piano_switch.select()
         self.piano_switch.pack(anchor="w", padx=10, pady=4)
+
+        # Audio Output Device Selection
+        dev_label = ctk.CTkLabel(piano_box, text="Hardware Audio Device (WASAPI/ASIO):", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
+        dev_label.pack(anchor="w", padx=10, pady=(4, 0))
+
+        self.audio_dev_dropdown = ctk.CTkComboBox(piano_box, values=["Loading..."], height=28, command=self._on_audio_device_changed)
+        self.audio_dev_dropdown.pack(fill="x", padx=10, pady=(2, 4))
 
         # Volume Slider
         vol_label = ctk.CTkLabel(piano_box, text="Piano Volume:", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
@@ -311,6 +319,21 @@ class RobloxMidiApp(ctk.CTk):
 
         self.log_textbox = ctk.CTkTextbox(right_col, height=130, font=("Consolas", 11), fg_color="#14141E", text_color="#00FF66")
         self.log_textbox.pack(fill="both", expand=True, padx=15, pady=(0, 10))
+
+    def _refresh_audio_devices(self):
+        self.audio_devices = get_low_latency_output_devices()
+        if self.audio_devices:
+            names = [name for _, name in self.audio_devices]
+            self.audio_dev_dropdown.configure(values=names)
+            self.audio_dev_dropdown.set(names[0])
+            self.log_message(f"Selected low-latency audio driver: {names[0]}")
+
+    def _on_audio_device_changed(self, chosen_name: str):
+        for dev_id, name in self.audio_devices:
+            if name == chosen_name:
+                self.piano_engine.set_device(dev_id)
+                self.log_message(f"Switched hardware audio driver to: {chosen_name}")
+                break
 
     def _toggle_piano_sound(self):
         enabled = bool(self.piano_switch.get())

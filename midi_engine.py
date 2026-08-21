@@ -44,7 +44,7 @@ def get_available_midi_ports() -> List[str]:
 
 
 class MidiEngine:
-    '''Ultra-low latency MIDI engine connecting WinMM C interrupts, keystrokes, and Salamander Grand Piano.'''
+    '''Ultra-low latency MIDI engine connecting WinMM C interrupts, keystrokes, and Salamander Grand Piano with Sustain Pedal support.'''
 
     def __init__(self, keymap_mgr: KeymapManager, simulator: KeyboardSimulator, piano_engine: Optional[SalamanderGrandPianoEngine] = None):
         self.keymap_mgr = keymap_mgr
@@ -161,25 +161,27 @@ class MidiEngine:
             return
 
         status = dwParam1 & 0xFF
-        note = (dwParam1 >> 8) & 0xFF
-        velocity = (dwParam1 >> 16) & 0xFF
+        data1 = (dwParam1 >> 8) & 0xFF   # note number or controller number
+        data2 = (dwParam1 >> 16) & 0xFF  # velocity or controller value
         msg_type = status & 0xF0
 
-        if msg_type == 0x90 and velocity >= self.min_velocity:
-            # 1. Trigger authentic Yamaha C5 sound instantly in RAM (<0.2ms)
+        # 1. Handle Note On (0x90)
+        if msg_type == 0x90 and data2 >= self.min_velocity:
+            note = data1
+            velocity = data2
             if self.piano_engine and self.piano_engine.enabled:
                 self.piano_engine.note_on(note + self.transpose, velocity)
 
-            # 2. Trigger Roblox keystroke simulation (<0.1ms)
             mapped_key = self.keymap_mgr.get_key_for_note(note, transpose=self.transpose)
             if mapped_key:
                 self.simulator.press_key(mapped_key)
 
-            # 3. Asynchronous UI Visualizer update
             if self.on_note_on_cb:
                 self.on_note_on_cb(note, velocity, mapped_key)
 
-        elif msg_type == 0x80 or (msg_type == 0x90 and velocity < self.min_velocity):
+        # 2. Handle Note Off (0x80)
+        elif msg_type == 0x80 or (msg_type == 0x90 and data2 < self.min_velocity):
+            note = data1
             if self.piano_engine and self.piano_engine.enabled:
                 self.piano_engine.note_off(note + self.transpose)
 
@@ -189,3 +191,15 @@ class MidiEngine:
 
             if self.on_note_off_cb:
                 self.on_note_off_cb(note, mapped_key)
+
+        # 3. Handle MIDI Control Change (0xB0) - Sustain Pedal (CC 64)
+        elif msg_type == 0xB0 and data1 == 64:
+            is_sustain_down = (data2 >= 64)
+            if self.piano_engine:
+                self.piano_engine.set_sustain_pedal(is_sustain_down)
+            
+            # Map sustain pedal in Roblox (typically mapped to Spacebar)
+            if is_sustain_down:
+                self.simulator.press_key(' ')
+            else:
+                self.simulator.release_key(' ')
