@@ -134,11 +134,9 @@ class MidiFilePlayer:
                     note = msg.note
                     velocity = msg.velocity
 
-                    # 1. Trigger authentic Yamaha C5 sound
                     if self.piano_engine and self.piano_engine.enabled:
                         self.piano_engine.note_on(note + self.transpose, velocity)
 
-                    # 2. Trigger simulated keystrokes
                     mapped_key = self.keymap_mgr.get_key_for_note(note, transpose=self.transpose)
                     if mapped_key:
                         self.simulator.press_key(mapped_key)
@@ -160,7 +158,6 @@ class MidiFilePlayer:
                         self.on_note_off_cb(note, mapped_key)
 
                 elif msg.type == 'control_change' and msg.control == 64:
-                    # Sustain pedal in MIDI file
                     is_down = (msg.value >= 64)
                     if self.piano_engine:
                         self.piano_engine.set_sustain_pedal(is_down)
@@ -220,6 +217,7 @@ class MidiFilePlayer:
             if len(group) == 1:
                 result_words.append(group[0])
             else:
-                result_words.append(f'[{\"\".join(group)}]')
+                chord_str = ''.join(group)
+                result_words.append(f'[{chord_str}]')
 
         return ' '.join(result_words)
