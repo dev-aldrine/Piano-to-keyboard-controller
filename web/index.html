@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HZWU • Neumorphic MIDI Studio & Grand Piano Controller</title>
+  <!-- Google Fonts: Plus Jakarta Sans (Display) & DM Sans (Body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Header Bar -->
+    <header class="neu-header">
+      <div class="header-left">
+        <button id="sidebarToggleBtn" class="neu-btn-icon header-toggle-btn" title="Toggle Controls Sidebar" onclick="toggleSidebar()">
+          <span class="toggle-icon">☰</span>
+        </button>
+        <div class="brand-badge">HZWU</div>
+        <div class="brand-title">
+          <span class="app-name">MIDI STUDIO & GRAND PIANO CONTROLLER</span>
+          <span class="app-subtitle">Ultra Low-Latency WASAPI & Virtual Cable Passthrough</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="statusBadge" class="status-pill disconnected">
+          <span class="status-dot"></span>
+          <span id="statusText">DISCONNECTED</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main id="workspaceGrid" class="workspace-grid">
+      <!-- Left Column: Controls & Hardware Configuration (Collapsible) -->
+      <section id="leftPanel" class="left-panel">
+        
+        <!-- Card 1: MIDI Connection Card -->
+        <div class="neu-card">
+          <div class="card-header">
+            <span class="card-icon">🎹</span>
+            <h2 class="card-title">MIDI INPUT DEVICE</h2>
+          </div>
+          <div class="card-body">
+            <div class="neu-select-wrapper">
+              <select id="midiPortSelect" class="neu-select" onchange="onMidiPortChanged()">
+                <option value="">Searching for devices...</option>
+              </select>
+            </div>
+            <div class="btn-group">
+              <button class="neu-btn neu-btn-secondary" onclick="refreshMidiPorts()">
+                <span class="btn-icon">🔄</span> Refresh
+              </button>
+              <button id="connectBtn" class="neu-btn neu-btn-primary" onclick="toggleConnection()">
+                Connect
+              </button>
+            </div>
+            <label class="neu-checkbox-label">
+              <input type="checkbox" id="autoConnectCheck" onchange="toggleAutoConnect()" />
+              <span class="neu-checkbox-custom"></span>
+              <span class="checkbox-text">Auto-Connect on Startup</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Card 2: Yamaha C5 Grand Piano Audio -->
+        <div class="neu-card">
+          <div class="card-header">
+            <span class="card-icon">🎧</span>
+            <h2 class="card-title accent-violet">YAMAHA C5 DIRECT AUDIO</h2>
+          </div>
+          <div class="card-body">
+            <div class="switch-row">
+              <span class="switch-label">Direct Grand Piano Sound</span>
+              <label class="neu-switch">
+                <input type="checkbox" id="pianoSoundSwitch" onchange="togglePianoSound()" />
+                <span class="neu-slider"></span>
+              </label>
+            </div>
+
+            <label class="control-label">Audio Device (WASAPI Low-Latency)</label>
+            <div class="neu-select-wrapper">
+              <select id="audioDeviceSelect" class="neu-select" onchange="onAudioDeviceChanged()">
+                <option value="">Loading audio devices...</option>
+              </select>
+            </div>
+
+            <div class="slider-control">
+              <div class="slider-header">
+                <span class="control-label">Piano Output Volume</span>
+                <span id="pianoVolVal" class="val-badge">85%</span>
+              </div>
+              <input type="range" id="pianoVolSlider" class="neu-range" min="0" max="100" value="85" oninput="onPianoVolChanged(this.value)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Virtual Mic Broadcast -->
+        <div class="neu-card">
+          <div class="card-header">
+            <span class="card-icon">🎙️</span>
+            <h2 class="card-title accent-teal">VIRTUAL MIC BROADCAST</h2>
+          </div>
+          <div class="card-body">
+            <div class="switch-row">
+              <span class="switch-label">Broadcast Audio to Virtual Mic</span>
+              <label class="neu-switch switch-teal">
+                <input type="checkbox" id="vmicSwitch" onchange="toggleVirtualMic()" />
+                <span class="neu-slider"></span>
+              </label>
+            </div>
+
+            <label class="control-label">Virtual Cable Target (e.g. CABLE Input)</label>
+            <div class="neu-select-wrapper">
+              <select id="vmicDeviceSelect" class="neu-select" onchange="onVmicDeviceChanged()">
+                <option value="">Loading virtual cables...</option>
+              </select>
+            </div>
+
+            <div class="slider-control">
+              <div class="slider-header">
+                <span class="control-label">Mic Broadcast Gain</span>
+                <span id="vmicVolVal" class="val-badge badge-teal">85%</span>
+              </div>
+              <input type="range" id="vmicVolSlider" class="neu-range range-teal" min="0" max="100" value="85" oninput="onVmicVolChanged(this.value)" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 4: Velocity Response & Easing Curves -->
+        <div class="neu-card">
+          <div class="card-header space-between">
+            <div class="header-inline">
+              <span class="card-icon">📈</span>
+              <h2 class="card-title accent-violet">VELOCITY CURVE (EASING)</h2>
+            </div>
+            <span id="velocityCurveTag" class="curve-badge">Linear</span>
+          </div>
+          <div class="card-body">
+            <div class="neu-select-wrapper">
+              <select id="velocityCurveSelect" class="neu-select" onchange="onVelocityCurveChanged(this.value)">
+                <option value="linear">Linear (Default 1:1 Direct)</option>
+                <option value="ease_in">Ease-In (Soft Touch / Quadratic)</option>
+                <option value="ease_out">Ease-Out (Fast Attack / High Sensitivity)</option>
+                <option value="ease_in_out">Ease-In-Out (S-Curve Dynamics)</option>
+                <option value="exponential">Exponential (Heavy / Fortissimo Jump)</option>
+                <option value="logarithmic">Logarithmic (Ultra Light Key Action)</option>
+                <option value="compressed">Compressed (Studio Clamped Dynamism)</option>
+              </select>
+            </div>
+
+            <!-- Neumorphic Inset Graph Container -->
+            <div class="curve-graph-box neu-inset-deep">
+              <canvas id="curveCanvas" width="310" height="110"></canvas>
+              <div class="graph-labels">
+                <span class="graph-axis-label">Soft (pp)</span>
+                <span class="graph-axis-label">Input → Output</span>
+                <span class="graph-axis-label">Hard (ff)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 5: Keyboard Simulation Settings -->
+        <div class="neu-card">
+          <div class="card-header">
+            <span class="card-icon">⌨️</span>
+            <h2 class="card-title">KEYBOARD MAPPING SETTINGS</h2>
+          </div>
+          <div class="card-body">
+            <div class="switch-row">
+              <span class="switch-label">Simulate Keystrokes (F8 Toggle)</span>
+              <label class="neu-switch">
+                <input type="checkbox" id="keystrokeSwitch" onchange="toggleKeystrokes()" />
+                <span class="neu-slider"></span>
+              </label>
+            </div>
+
+            <div class="slider-control">
+              <div class="slider-header">
+                <span class="control-label">Transpose Pitch</span>
+                <span id="transposeVal" class="val-badge">+0 Semi</span>
+              </div>
+              <input type="range" id="transposeSlider" class="neu-range" min="-24" max="24" value="0" step="1" oninput="onTransposeChanged(this.value)" />
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Right Column: Visualizer, Song Player & Console -->
+      <section class="right-panel">
+        
+        <!-- Live 61-Key Piano Visualizer Card -->
+        <div class="neu-card visualizer-card">
+          <div class="card-header space-between">
+            <div class="header-inline">
+              <span class="card-icon">🎹</span>
+              <h2 class="card-title">LIVE 61-KEY PIANO VISUALIZER</h2>
+            </div>
+            <span class="badge-subtle">HZWU • Neumorphic Engine</span>
+          </div>
+          <div class="piano-viewport neu-inset-deep">
+            <div id="pianoKeyboard" class="piano-keys-container"></div>
+          </div>
+        </div>
+
+        <!-- MIDI File Player & Converter Card -->
+        <div class="neu-card player-card">
+          <div class="card-header space-between">
+            <div class="header-inline">
+              <span class="card-icon">🎵</span>
+              <h2 class="card-title accent-violet">MIDI FILE PLAYER & SHEET CONVERTER</h2>
+            </div>
+            <span id="loadedFileLabel" class="file-status-badge">No file loaded</span>
+          </div>
+          <div class="card-body">
+            <div class="player-controls">
+              <button class="neu-btn neu-btn-secondary" onclick="openMidiFile()">
+                <span class="btn-icon">📁</span> Open .mid
+              </button>
+              <button id="playBtn" class="neu-btn neu-btn-teal" onclick="playMidiFile()">
+                ▶ Play
+              </button>
+              <button id="pauseBtn" class="neu-btn neu-btn-amber" onclick="pauseMidiFile()">
+                ⏸ Pause
+              </button>
+              <button id="stopBtn" class="neu-btn neu-btn-danger" onclick="stopMidiFile()">
+                ⏹ Stop
+              </button>
+              <button class="neu-btn neu-btn-primary ml-auto" onclick="viewSheetNotation()">
+                🎼 View Sheet
+              </button>
+            </div>
+
+            <div class="progress-section">
+              <div class="progress-track neu-inset-well" onclick="seekSong(event)">
+                <div id="progressBar" class="progress-fill"></div>
+              </div>
+              <div class="time-display">
+                <span id="currentTime">00:00</span> / <span id="totalTime">00:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event Logs Console Card -->
+        <div class="neu-card logs-card">
+          <div class="card-header space-between">
+            <div class="header-inline">
+              <span class="card-icon">📟</span>
+              <h2 class="card-title">EVENT LOGS</h2>
+            </div>
+            <div class="header-actions">
+              <label class="neu-checkbox-label">
+                <input type="checkbox" id="loggingCheck" checked onchange="toggleLogging()" />
+                <span class="neu-checkbox-custom"></span>
+                <span class="checkbox-text">Enable Logs</span>
+              </label>
+              <button class="neu-btn-icon" title="Clear Logs" onclick="clearLogs()">🗑️</button>
+            </div>
+          </div>
+          <div class="logs-viewport neu-inset-deep">
+            <div id="logConsole" class="logs-content"></div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- Sheet Music Modal Dialog -->
+    <div id="sheetModal" class="neu-modal-backdrop" style="display: none;">
+      <div class="neu-modal-card neu-card">
+        <div class="modal-header">
+          <div class="header-inline">
+            <span class="card-icon">🎼</span>
+            <h2 class="card-title">Roblox Virtual Piano Sheet Notation</h2>
+          </div>
+          <button class="modal-close-btn" onclick="closeSheetModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <textarea id="sheetContentText" class="neu-textarea neu-inset-deep" readonly></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="neu-btn neu-btn-primary" onclick="copySheetToClipboard()">📋 Copy to Clipboard</button>
+          <button class="neu-btn neu-btn-secondary" onclick="closeSheetModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

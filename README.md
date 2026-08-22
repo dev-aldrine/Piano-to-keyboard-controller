@@ -1,12 +1,13 @@
-# 🎹 Roblox MIDI Keyboard Mapper & File Player
+# 🎹 HZWU • Neumorphic MIDI Studio & Grand Piano Controller
 
-A high-performance desktop application that maps physical MIDI controllers and plays back `.mid` / `.midi` files directly into Roblox Virtual Piano keyboard inputs with exact musical timing.
+A high-performance desktop application designed with a sleek Neumorphic Soft UI design system, created for **HZWU**. Maps physical MIDI controllers and plays back `.mid` / `.midi` files directly into Roblox Virtual Piano keyboard inputs with exact musical timing and Yamaha C5 grand piano acoustic sound synthesis.
 
 ---
 
 ## 🌟 Features
 
 - **Live MIDI Controller Input**: Plug in any USB MIDI Keyboard or Digital Piano and play live in Roblox.
+- **📈 Velocity Easing Curve Engine & Interactive Graphs**: Choose from 7 dynamic velocity curves (**Linear**, **Ease-In**, **Ease-Out**, **Ease-In-Out**, **Exponential**, **Logarithmic**, and **Compressed**) with real-time visual response graphs.
 - **📁 MIDI File Player & Auto-Play**: Load any `.mid` or `.midi` song file and play it back with exact note timing, velocity, speed control (`0.5x` to `2.0x`), and real-time progress bar tracking!
 - **📄 Export Roblox Piano Sheets (.txt)**: Automatically converts uploaded `.mid` files into text sheet music format (e.g. `[tY] u i [op]`) that you can copy to your clipboard with one click!
 - **Standard 61-Key Roblox Mapping**: Pre-configured with the standard Virtual Piano (VP) 61-key layout (C2 to C7 | MIDI 36–96) used in Roblox piano games (*Virtual Piano*, *RoPiano*, *Auto Piano*, *Piano Visualizer*).

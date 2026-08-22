@@ -1,4 +1,4 @@
-﻿import threading
+import threading
 import time
 from typing import List, Callable, Optional, Tuple
 import mido
@@ -6,6 +6,7 @@ import mido
 from keymap_config import KeymapManager, midi_note_to_name
 from keyboard_simulator import KeyboardSimulator
 from salamander_engine import SalamanderGrandPianoEngine
+from velocity_curve import transform_velocity
 
 
 class MidiFilePlayer:
@@ -26,6 +27,7 @@ class MidiFilePlayer:
         self.speed_multiplier: float = 1.0
 
         self.transpose: int = 0
+        self.velocity_curve: str = "linear"
         self.play_thread: Optional[threading.Thread] = None
 
         # Callbacks for UI updates
@@ -132,7 +134,7 @@ class MidiFilePlayer:
                 # Process MIDI note events
                 if msg.type == 'note_on' and msg.velocity > 0:
                     note = msg.note
-                    velocity = msg.velocity
+                    velocity = transform_velocity(msg.velocity, self.velocity_curve)
 
                     if self.piano_engine and self.piano_engine.enabled:
                         self.piano_engine.note_on(note + self.transpose, velocity)

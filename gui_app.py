@@ -1,4 +1,4 @@
-﻿import tkinter as tk
+import tkinter as tk
 from tkinter import ttk, filedialog
 import customtkinter as ctk
 import time
@@ -12,7 +12,19 @@ from salamander_engine import SalamanderGrandPianoEngine, get_low_latency_output
 from midi_engine import MidiEngine, get_available_midi_ports
 from midi_file_player import MidiFilePlayer
 
-ctk.set_appearance_mode("Dark")
+# Neumorphism Design Tokens
+NEU_BG = "#E0E5EC"            # Monochromatic cool clay surface
+NEU_CARD = "#E0E5EC"          # Card surface (molded from background)
+NEU_WELL = "#D4DAE3"          # Inset well background
+NEU_TEXT_PRIMARY = "#3D4852"  # Primary foreground text
+NEU_TEXT_MUTED = "#6B7280"    # Secondary muted text
+NEU_ACCENT = "#6C63FF"        # Soft violet accent
+NEU_ACCENT_HOVER = "#8B84FF"  # Lighter violet hover
+NEU_TEAL = "#38B2AC"          # Secondary positive teal
+NEU_DANGER = "#E53E3E"        # Soft danger red
+NEU_WARNING = "#DD6B20"       # Soft warning amber
+
+ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
@@ -22,11 +34,13 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
     """Canvas drawing a live 61-key visual piano highlighting pressed keys in real-time."""
 
     def __init__(self, master, keymap_mgr: KeymapManager, **kwargs):
+        kwargs.setdefault("fg_color", NEU_WELL)
+        kwargs.setdefault("corner_radius", 16)
         super().__init__(master, **kwargs)
         self.keymap_mgr = keymap_mgr
 
-        self.canvas = tk.Canvas(self, bg="#181824", highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True, padx=5, pady=5)
+        self.canvas = tk.Canvas(self, bg=NEU_WELL, highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True, padx=6, pady=6)
 
         self.pressed_notes: Dict[int, bool] = {}
         self.white_keys_rects = {}
@@ -43,10 +57,10 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
         is_pressed = self.pressed_notes.get(note, False)
 
         if note in self.white_keys_rects:
-            color = "#00E5FF" if is_pressed else "#FFFFFF"
+            color = NEU_ACCENT if is_pressed else "#FFFFFF"
             self.canvas.itemconfig(self.white_keys_rects[note], fill=color)
         elif note in self.black_keys_rects:
-            color = "#FF2A85" if is_pressed else "#252533"
+            color = "#8B84FF" if is_pressed else "#3D4852"
             self.canvas.itemconfig(self.black_keys_rects[note], fill=color)
 
     def _draw_keyboard(self, event=None):
@@ -73,7 +87,7 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
         for note in white_notes:
             rect = self.canvas.create_rectangle(
                 x, 0, x + key_w - 1, key_h,
-                fill="#FFFFFF", outline="#101018", width=1
+                fill="#FFFFFF", outline="#CAD1DC", width=1
             )
             self.white_keys_rects[note] = rect
             note_to_x[note] = x
@@ -82,7 +96,7 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
             if mapped_char:
                 self.canvas.create_text(
                     x + key_w / 2, key_h - 15,
-                    text=mapped_char, fill="#202030", font=("Consolas", 10, "bold")
+                    text=mapped_char, fill=NEU_TEXT_PRIMARY, font=("Consolas", 10, "bold")
                 )
 
             x += key_w
@@ -97,7 +111,7 @@ class PianoVisualizerCanvas(ctk.CTkFrame):
                     bx = note_to_x[prev_white] + key_w - (black_w / 2)
                     rect = self.canvas.create_rectangle(
                         bx, 0, bx + black_w, black_h,
-                        fill="#252533", outline="#101018", width=1
+                        fill="#3D4852", outline="#252F38", width=1
                     )
                     self.black_keys_rects[note] = rect
 
@@ -119,9 +133,10 @@ class RobloxMidiApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Roblox MIDI Keyboard Mapper & Yamaha C5 Grand Piano Player")
-        self.geometry("1100 x 890")
-        self.minsize(960, 750)
+        self.title("HZWU • Neumorphic MIDI Studio & Grand Piano Controller")
+        self.geometry("1120 x 920")
+        self.minsize(980, 780)
+        self.configure(fg_color=NEU_BG)
 
         # Load user configuration
         self.config = self._load_config()
@@ -211,224 +226,320 @@ class RobloxMidiApp(ctk.CTk):
             print(f"Error saving config: {e}")
 
     def _build_ui(self):
-        header_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="#1F1F2E")
-        header_frame.pack(fill="x", padx=15, pady=(15, 8))
+        # Top Header Bar - Neumorphic elevated header with HZWU branding badge
+        header_frame = ctk.CTkFrame(self, corner_radius=20, fg_color=NEU_CARD)
+        header_frame.pack(fill="x", padx=16, pady=(16, 10))
+
+        brand_badge = ctk.CTkLabel(
+            header_frame,
+            text="HZWU",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=NEU_ACCENT,
+            text_color="#FFFFFF",
+            corner_radius=10,
+            width=58,
+            height=28
+        )
+        brand_badge.pack(side="left", padx=(14, 8), pady=12)
 
         title_label = ctk.CTkLabel(
             header_frame,
-            text="🎹 Roblox MIDI Mapper + Yamaha C5 (WASAPI Low-Latency)",
-            font=ctk.CTkFont(family="Consolas", size=20, weight="bold"),
-            text_color="#00E5FF"
+            text="MIDI STUDIO & GRAND PIANO CONTROLLER",
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            text_color=NEU_TEXT_PRIMARY
         )
-        title_label.pack(side="left", padx=15, pady=10)
+        title_label.pack(side="left", padx=4, pady=12)
 
         self.status_badge = ctk.CTkLabel(
             header_frame,
             text="● DISCONNECTED",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#FF4B4B"
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color=NEU_WELL,
+            text_color=NEU_DANGER,
+            corner_radius=12,
+            padx=12,
+            pady=4
         )
-        self.status_badge.pack(side="right", padx=15, pady=10)
+        self.status_badge.pack(side="right", padx=14, pady=12)
 
         main_content = ctk.CTkFrame(self, fg_color="transparent")
-        main_content.pack(fill="both", expand=True, padx=15, pady=5)
+        main_content.pack(fill="both", expand=True, padx=16, pady=5)
 
-        # Left Column
-        left_col = ctk.CTkFrame(main_content, width=380, corner_radius=10, fg_color="#1E1E2A")
-        left_col.pack(side="left", fill="y", padx=(0, 10), pady=5)
+        # Left Column (Controls & Device Settings)
+        left_col = ctk.CTkFrame(main_content, width=390, corner_radius=24, fg_color=NEU_CARD)
+        left_col.pack(side="left", fill="y", padx=(0, 12), pady=5)
         left_col.pack_propagate(False)
 
-        # MIDI Connection Card
-        conn_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
-        conn_box.pack(fill="x", padx=10, pady=6)
+        # Card 1: MIDI Connection Card
+        conn_box = ctk.CTkFrame(left_col, corner_radius=18, fg_color=NEU_WELL)
+        conn_box.pack(fill="x", padx=12, pady=(12, 6))
 
-        conn_title = ctk.CTkLabel(conn_box, text="MIDI INPUT DEVICE", font=ctk.CTkFont(size=12, weight="bold"), text_color="#A0A0B0")
-        conn_title.pack(anchor="w", padx=10, pady=(6, 2))
+        conn_title = ctk.CTkLabel(conn_box, text="MIDI INPUT DEVICE", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_TEXT_PRIMARY)
+        conn_title.pack(anchor="w", padx=12, pady=(8, 2))
 
-        self.port_dropdown = ctk.CTkComboBox(conn_box, values=["Searching..."], height=30, command=lambda _: self._save_config())
-        self.port_dropdown.pack(fill="x", padx=10, pady=2)
+        self.port_dropdown = ctk.CTkComboBox(
+            conn_box, values=["Searching..."], height=32,
+            fg_color=NEU_BG, text_color=NEU_TEXT_PRIMARY, button_color=NEU_ACCENT,
+            button_hover_color=NEU_ACCENT_HOVER, dropdown_fg_color=NEU_BG,
+            dropdown_text_color=NEU_TEXT_PRIMARY, corner_radius=12,
+            command=lambda _: self._save_config()
+        )
+        self.port_dropdown.pack(fill="x", padx=12, pady=4)
 
         btn_row = ctk.CTkFrame(conn_box, fg_color="transparent")
-        btn_row.pack(fill="x", padx=10, pady=(2, 2))
+        btn_row.pack(fill="x", padx=12, pady=(2, 4))
 
-        self.refresh_btn = ctk.CTkButton(btn_row, text="🔄 Refresh", width=90, height=30, command=self._refresh_midi_ports)
-        self.refresh_btn.pack(side="left", padx=(0, 5))
+        self.refresh_btn = ctk.CTkButton(
+            btn_row, text="🔄 Refresh", width=95, height=32,
+            fg_color=NEU_BG, hover_color="#CAD1DC", text_color=NEU_TEXT_PRIMARY,
+            corner_radius=12, command=self._refresh_midi_ports
+        )
+        self.refresh_btn.pack(side="left", padx=(0, 6))
 
         self.connect_btn = ctk.CTkButton(
-            btn_row, text="Connect", width=120, height=30,
-            fg_color="#28A745", hover_color="#218838",
+            btn_row, text="Connect", width=130, height=32,
+            fg_color=NEU_TEAL, hover_color="#2C8F8A", text_color="#FFFFFF",
+            corner_radius=12, font=ctk.CTkFont(weight="bold"),
             command=self._toggle_connection
         )
         self.connect_btn.pack(side="left", fill="x", expand=True)
 
         self.auto_connect_checkbox = ctk.CTkCheckBox(
             conn_box, text="Auto-Connect on Startup",
-            font=ctk.CTkFont(size=11),
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=NEU_TEXT_MUTED, fg_color=NEU_ACCENT,
             command=self._save_config
         )
         if self.config.get("auto_connect", True):
             self.auto_connect_checkbox.select()
-        self.auto_connect_checkbox.pack(anchor="w", padx=10, pady=(2, 6))
+        self.auto_connect_checkbox.pack(anchor="w", padx=12, pady=(4, 8))
 
-        # Yamaha C5 Acoustic Grand Piano Card
-        piano_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
-        piano_box.pack(fill="x", padx=10, pady=4)
+        # Card 2: Yamaha C5 Direct Audio Card
+        piano_box = ctk.CTkFrame(left_col, corner_radius=18, fg_color=NEU_WELL)
+        piano_box.pack(fill="x", padx=12, pady=6)
 
-        piano_title = ctk.CTkLabel(piano_box, text="🎧 YAMAHA C5 DIRECT AUDIO", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF")
-        piano_title.pack(anchor="w", padx=10, pady=(6, 2))
+        piano_title = ctk.CTkLabel(piano_box, text="🎧 YAMAHA C5 DIRECT AUDIO", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_ACCENT)
+        piano_title.pack(anchor="w", padx=12, pady=(8, 2))
 
         self.piano_switch = ctk.CTkSwitch(
-            piano_box, text="Enable Direct Grand Piano Sound",
+            piano_box, text="Direct Grand Piano Output",
+            progress_color=NEU_ACCENT, text_color=NEU_TEXT_PRIMARY,
             command=self._toggle_piano_sound
         )
         if self.config.get("piano_sound_enabled", True):
             self.piano_switch.select()
         else:
             self.piano_switch.deselect()
-        self.piano_switch.pack(anchor="w", padx=10, pady=2)
+        self.piano_switch.pack(anchor="w", padx=12, pady=3)
 
-        dev_label = ctk.CTkLabel(piano_box, text="Audio Device (WASAPI Low-Latency):", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
-        dev_label.pack(anchor="w", padx=10, pady=(2, 0))
+        dev_label = ctk.CTkLabel(piano_box, text="Audio Device (WASAPI Low-Latency):", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED)
+        dev_label.pack(anchor="w", padx=12, pady=(2, 0))
 
-        self.audio_dev_dropdown = ctk.CTkComboBox(piano_box, values=["Loading..."], height=28, command=self._on_audio_device_changed)
-        self.audio_dev_dropdown.pack(fill="x", padx=10, pady=(2, 2))
+        self.audio_dev_dropdown = ctk.CTkComboBox(
+            piano_box, values=["Loading..."], height=30,
+            fg_color=NEU_BG, text_color=NEU_TEXT_PRIMARY, button_color=NEU_ACCENT,
+            button_hover_color=NEU_ACCENT_HOVER, dropdown_fg_color=NEU_BG,
+            dropdown_text_color=NEU_TEXT_PRIMARY, corner_radius=12,
+            command=self._on_audio_device_changed
+        )
+        self.audio_dev_dropdown.pack(fill="x", padx=12, pady=(2, 4))
 
-        vol_label = ctk.CTkLabel(piano_box, text="Piano Volume:", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
-        vol_label.pack(anchor="w", padx=10, pady=(2, 0))
+        vol_label = ctk.CTkLabel(piano_box, text="Piano Volume:", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED)
+        vol_label.pack(anchor="w", padx=12, pady=(2, 0))
 
-        self.vol_slider = ctk.CTkSlider(piano_box, from_=0.0, to=1.0, number_of_steps=20, command=self._on_volume_changed)
+        self.vol_slider = ctk.CTkSlider(
+            piano_box, from_=0.0, to=1.0, number_of_steps=20,
+            button_color=NEU_ACCENT, progress_color=NEU_ACCENT,
+            command=self._on_volume_changed
+        )
         self.vol_slider.set(self.config.get("piano_volume", 0.85))
-        self.vol_slider.pack(fill="x", padx=10, pady=(2, 6))
+        self.vol_slider.pack(fill="x", padx=12, pady=(2, 8))
 
-        # Virtual Mic Section Card
-        vmic_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
-        vmic_box.pack(fill="x", padx=10, pady=4)
+        # Card 3: Virtual Mic Broadcast Card
+        vmic_box = ctk.CTkFrame(left_col, corner_radius=18, fg_color=NEU_WELL)
+        vmic_box.pack(fill="x", padx=12, pady=6)
 
-        vmic_title = ctk.CTkLabel(vmic_box, text="🎙️ VIRTUAL MIC BROADCAST", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00FF66")
-        vmic_title.pack(anchor="w", padx=10, pady=(6, 2))
+        vmic_title = ctk.CTkLabel(vmic_box, text="🎙️ VIRTUAL MIC BROADCAST", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_TEAL)
+        vmic_title.pack(anchor="w", padx=12, pady=(8, 2))
 
         self.vmic_switch = ctk.CTkSwitch(
-            vmic_box, text="Broadcast Audio to Virtual Mic",
+            vmic_box, text="Broadcast to Virtual Cable",
+            progress_color=NEU_TEAL, text_color=NEU_TEXT_PRIMARY,
             command=self._toggle_virtual_mic
         )
         if self.config.get("virtual_mic_enabled", False):
             self.vmic_switch.select()
         else:
             self.vmic_switch.deselect()
-        self.vmic_switch.pack(anchor="w", padx=10, pady=2)
+        self.vmic_switch.pack(anchor="w", padx=12, pady=3)
 
-        vmic_dev_label = ctk.CTkLabel(vmic_box, text="Virtual Cable Target (e.g. CABLE Input):", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
-        vmic_dev_label.pack(anchor="w", padx=10, pady=(2, 0))
+        vmic_dev_label = ctk.CTkLabel(vmic_box, text="Virtual Cable Target (e.g. CABLE Input):", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED)
+        vmic_dev_label.pack(anchor="w", padx=12, pady=(2, 0))
 
-        self.vmic_dropdown = ctk.CTkComboBox(vmic_box, values=["Loading..."], height=28, command=self._on_virtual_mic_device_changed)
-        self.vmic_dropdown.pack(fill="x", padx=10, pady=(2, 2))
+        self.vmic_dropdown = ctk.CTkComboBox(
+            vmic_box, values=["Loading..."], height=30,
+            fg_color=NEU_BG, text_color=NEU_TEXT_PRIMARY, button_color=NEU_TEAL,
+            button_hover_color="#2C8F8A", dropdown_fg_color=NEU_BG,
+            dropdown_text_color=NEU_TEXT_PRIMARY, corner_radius=12,
+            command=self._on_virtual_mic_device_changed
+        )
+        self.vmic_dropdown.pack(fill="x", padx=12, pady=(2, 4))
 
-        vmic_vol_label = ctk.CTkLabel(vmic_box, text="Mic Broadcast Gain:", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
-        vmic_vol_label.pack(anchor="w", padx=10, pady=(2, 0))
+        vmic_vol_label = ctk.CTkLabel(vmic_box, text="Mic Broadcast Gain:", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED)
+        vmic_vol_label.pack(anchor="w", padx=12, pady=(2, 0))
 
-        self.vmic_vol_slider = ctk.CTkSlider(vmic_box, from_=0.0, to=1.0, number_of_steps=20, command=self._on_virtual_mic_vol_changed)
+        self.vmic_vol_slider = ctk.CTkSlider(
+            vmic_box, from_=0.0, to=1.0, number_of_steps=20,
+            button_color=NEU_TEAL, progress_color=NEU_TEAL,
+            command=self._on_virtual_mic_vol_changed
+        )
         self.vmic_vol_slider.set(self.config.get("virtual_mic_volume", 0.85))
-        self.vmic_vol_slider.pack(fill="x", padx=10, pady=(2, 6))
+        self.vmic_vol_slider.pack(fill="x", padx=12, pady=(2, 8))
 
-        # Keyboard Mapping Card
-        settings_box = ctk.CTkFrame(left_col, corner_radius=8, fg_color="#252538")
-        settings_box.pack(fill="x", padx=10, pady=4)
+        # Card 4: Keyboard Simulation Settings
+        settings_box = ctk.CTkFrame(left_col, corner_radius=18, fg_color=NEU_WELL)
+        settings_box.pack(fill="x", padx=12, pady=6)
 
-        settings_title = ctk.CTkLabel(settings_box, text="KEYBOARD MAPPING SETTINGS", font=ctk.CTkFont(size=12, weight="bold"), text_color="#A0A0B0")
-        settings_title.pack(anchor="w", padx=10, pady=(6, 2))
+        settings_title = ctk.CTkLabel(settings_box, text="KEYBOARD MAPPING SETTINGS", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_TEXT_PRIMARY)
+        settings_title.pack(anchor="w", padx=12, pady=(8, 2))
 
         self.enable_switch = ctk.CTkSwitch(
             settings_box, text="Simulate Keystrokes (F8 Toggle)",
+            progress_color=NEU_ACCENT, text_color=NEU_TEXT_PRIMARY,
             command=self._on_switch_toggled
         )
         if self.config.get("keystrokes_enabled", True):
             self.enable_switch.select()
         else:
             self.enable_switch.deselect()
-        self.enable_switch.pack(anchor="w", padx=10, pady=2)
+        self.enable_switch.pack(anchor="w", padx=12, pady=3)
 
         transpose_frame = ctk.CTkFrame(settings_box, fg_color="transparent")
-        transpose_frame.pack(fill="x", padx=10, pady=2)
+        transpose_frame.pack(fill="x", padx=12, pady=2)
 
-        ctk.CTkLabel(transpose_frame, text="Transpose:", font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(transpose_frame, text="Transpose:", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED).pack(side="left")
         trans_val = self.config.get("transpose", 0)
         sign = "+" if trans_val > 0 else ""
-        self.transpose_val_label = ctk.CTkLabel(transpose_frame, text=f"{sign}{trans_val} Semi", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF")
+        self.transpose_val_label = ctk.CTkLabel(
+            transpose_frame, text=f"{sign}{trans_val} Semi",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color=NEU_ACCENT
+        )
         self.transpose_val_label.pack(side="right")
 
         self.transpose_slider = ctk.CTkSlider(
             settings_box, from_=-24, to=24, number_of_steps=48,
+            button_color=NEU_ACCENT, progress_color=NEU_ACCENT,
             command=self._on_transpose_changed
         )
         self.transpose_slider.set(trans_val)
-        self.transpose_slider.pack(fill="x", padx=10, pady=(2, 6))
+        self.transpose_slider.pack(fill="x", padx=12, pady=(2, 8))
 
-        # Right Column
-        right_col = ctk.CTkFrame(main_content, corner_radius=10, fg_color="#1E1E2A")
+        # Right Column (Visualizer, Player, Logs)
+        right_col = ctk.CTkFrame(main_content, corner_radius=24, fg_color=NEU_CARD)
         right_col.pack(side="right", fill="both", expand=True, pady=5)
 
-        # Piano Visualizer
-        vis_title = ctk.CTkLabel(right_col, text="LIVE 61-KEY PIANO VISUALIZER", font=ctk.CTkFont(size=12, weight="bold"), text_color="#A0A0B0")
-        vis_title.pack(anchor="w", padx=15, pady=(8, 2))
+        # 1. Piano Visualizer
+        vis_header = ctk.CTkFrame(right_col, fg_color="transparent")
+        vis_header.pack(fill="x", padx=16, pady=(12, 4))
+        vis_title = ctk.CTkLabel(vis_header, text="LIVE 61-KEY PIANO VISUALIZER", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_TEXT_PRIMARY)
+        vis_title.pack(side="left")
 
-        self.visualizer = PianoVisualizerCanvas(right_col, self.keymap_mgr, height=130, corner_radius=8, fg_color="#181824")
-        self.visualizer.pack(fill="x", padx=15, pady=(0, 8))
+        vis_brand_sub = ctk.CTkLabel(vis_header, text="HZWU • Neumorphic Engine", font=ctk.CTkFont(family="Segoe UI", size=10), text_color=NEU_TEXT_MUTED)
+        vis_brand_sub.pack(side="right")
 
-        # MIDI File Player
-        player_box = ctk.CTkFrame(right_col, corner_radius=8, fg_color="#252538")
-        player_box.pack(fill="x", padx=15, pady=(0, 8))
+        self.visualizer = PianoVisualizerCanvas(right_col, self.keymap_mgr, height=130)
+        self.visualizer.pack(fill="x", padx=16, pady=(0, 10))
+
+        # 2. MIDI File Player Card
+        player_box = ctk.CTkFrame(right_col, corner_radius=18, fg_color=NEU_WELL)
+        player_box.pack(fill="x", padx=16, pady=(0, 10))
 
         player_header = ctk.CTkFrame(player_box, fg_color="transparent")
-        player_header.pack(fill="x", padx=10, pady=(6, 2))
+        player_header.pack(fill="x", padx=14, pady=(10, 4))
 
-        ctk.CTkLabel(player_header, text="🎵 MIDI FILE PLAYER & SHEET CONVERTER", font=ctk.CTkFont(size=12, weight="bold"), text_color="#00E5FF").pack(side="left")
+        ctk.CTkLabel(
+            player_header, text="🎵 MIDI FILE PLAYER & SHEET CONVERTER",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_ACCENT
+        ).pack(side="left")
 
-        self.file_label = ctk.CTkLabel(player_header, text="No file loaded", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
+        self.file_label = ctk.CTkLabel(player_header, text="No file loaded", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED)
         self.file_label.pack(side="right")
 
         controls_row = ctk.CTkFrame(player_box, fg_color="transparent")
-        controls_row.pack(fill="x", padx=10, pady=4)
+        controls_row.pack(fill="x", padx=14, pady=4)
 
-        self.load_btn = ctk.CTkButton(controls_row, text="📁 Open .mid", width=100, height=28, command=self._open_midi_file)
-        self.load_btn.pack(side="left", padx=(0, 5))
+        self.load_btn = ctk.CTkButton(
+            controls_row, text="📁 Open .mid", width=105, height=32,
+            fg_color=NEU_BG, hover_color="#CAD1DC", text_color=NEU_TEXT_PRIMARY,
+            corner_radius=12, command=self._open_midi_file
+        )
+        self.load_btn.pack(side="left", padx=(0, 6))
 
-        self.play_btn = ctk.CTkButton(controls_row, text="▶ Play", width=80, height=28, fg_color="#28A745", hover_color="#218838", command=self._play_midi_file)
-        self.play_btn.pack(side="left", padx=5)
+        self.play_btn = ctk.CTkButton(
+            controls_row, text="▶ Play", width=85, height=32,
+            fg_color=NEU_TEAL, hover_color="#2C8F8A", text_color="#FFFFFF",
+            corner_radius=12, font=ctk.CTkFont(weight="bold"), command=self._play_midi_file
+        )
+        self.play_btn.pack(side="left", padx=4)
 
-        self.pause_btn = ctk.CTkButton(controls_row, text="⏸ Pause", width=80, height=28, fg_color="#FFA500", hover_color="#CC8400", command=self._pause_midi_file)
-        self.pause_btn.pack(side="left", padx=5)
+        self.pause_btn = ctk.CTkButton(
+            controls_row, text="⏸ Pause", width=85, height=32,
+            fg_color=NEU_WARNING, hover_color="#C05621", text_color="#FFFFFF",
+            corner_radius=12, font=ctk.CTkFont(weight="bold"), command=self._pause_midi_file
+        )
+        self.pause_btn.pack(side="left", padx=4)
 
-        self.stop_btn = ctk.CTkButton(controls_row, text="⏹ Stop", width=80, height=28, fg_color="#DC3545", hover_color="#C82333", command=self._stop_midi_file)
-        self.stop_btn.pack(side="left", padx=5)
+        self.stop_btn = ctk.CTkButton(
+            controls_row, text="⏹ Stop", width=85, height=32,
+            fg_color=NEU_DANGER, hover_color="#C53030", text_color="#FFFFFF",
+            corner_radius=12, font=ctk.CTkFont(weight="bold"), command=self._stop_midi_file
+        )
+        self.stop_btn.pack(side="left", padx=4)
 
-        self.sheet_btn = ctk.CTkButton(controls_row, text="🎼 View Sheet Text", width=130, height=28, fg_color="#6C757D", hover_color="#5A6268", command=self._view_sheet_notation)
+        self.sheet_btn = ctk.CTkButton(
+            controls_row, text="🎼 View Sheet", width=115, height=32,
+            fg_color=NEU_ACCENT, hover_color=NEU_ACCENT_HOVER, text_color="#FFFFFF",
+            corner_radius=12, command=self._view_sheet_notation
+        )
         self.sheet_btn.pack(side="right")
 
         progress_row = ctk.CTkFrame(player_box, fg_color="transparent")
-        progress_row.pack(fill="x", padx=10, pady=(2, 6))
+        progress_row.pack(fill="x", padx=14, pady=(4, 10))
 
-        self.progress_bar = ctk.CTkProgressBar(progress_row, height=8)
+        self.progress_bar = ctk.CTkProgressBar(
+            progress_row, height=8, corner_radius=6,
+            progress_color=NEU_ACCENT, fg_color=NEU_BG
+        )
         self.progress_bar.set(0)
         self.progress_bar.pack(side="left", fill="x", expand=True, padx=(0, 10))
 
-        self.time_label = ctk.CTkLabel(progress_row, text="00:00 / 00:00", font=ctk.CTkFont(size=11), text_color="#A0A0B0")
+        self.time_label = ctk.CTkLabel(progress_row, text="00:00 / 00:00", font=ctk.CTkFont(family="Segoe UI", size=11), text_color=NEU_TEXT_MUTED)
         self.time_label.pack(side="right")
 
-        # Logs Console
+        # 3. Logs Console Card
         log_header = ctk.CTkFrame(right_col, fg_color="transparent")
-        log_header.pack(fill="x", padx=15, pady=(4, 2))
+        log_header.pack(fill="x", padx=16, pady=(4, 4))
 
-        ctk.CTkLabel(log_header, text="EVENT LOGS", font=ctk.CTkFont(size=12, weight="bold"), text_color="#A0A0B0").pack(side="left")
+        ctk.CTkLabel(log_header, text="EVENT LOGS", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), text_color=NEU_TEXT_PRIMARY).pack(side="left")
 
-        self.log_checkbox = ctk.CTkCheckBox(log_header, text="Enable Logging", command=self._toggle_logging)
+        self.log_checkbox = ctk.CTkCheckBox(
+            log_header, text="Enable Logging",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=NEU_TEXT_MUTED, fg_color=NEU_ACCENT,
+            command=self._toggle_logging
+        )
         if self.logging_enabled:
             self.log_checkbox.select()
         else:
             self.log_checkbox.deselect()
         self.log_checkbox.pack(side="right")
 
-        self.log_textbox = ctk.CTkTextbox(right_col, height=120, font=("Consolas", 11), fg_color="#14141E", text_color="#00FF66")
-        self.log_textbox.pack(fill="both", expand=True, padx=15, pady=(0, 8))
+        self.log_textbox = ctk.CTkTextbox(
+            right_col, height=140, font=("Consolas", 11),
+            fg_color=NEU_WELL, text_color=NEU_TEXT_PRIMARY,
+            corner_radius=16
+        )
+        self.log_textbox.pack(fill="both", expand=True, padx=16, pady=(0, 12))
 
     def _auto_connect_saved_device(self):
         saved_port = self.config.get("last_midi_port")
@@ -530,16 +641,16 @@ class RobloxMidiApp(ctk.CTk):
     def _toggle_connection(self):
         if self.engine.is_running:
             self.engine.stop()
-            self.connect_btn.configure(text="Connect", fg_color="#28A745", hover_color="#218838")
-            self.status_badge.configure(text="● DISCONNECTED", text_color="#FF4B4B")
+            self.connect_btn.configure(text="Connect", fg_color=NEU_TEAL, hover_color="#2C8F8A")
+            self.status_badge.configure(text="● DISCONNECTED", text_color=NEU_DANGER)
         else:
             selected_port = self.port_dropdown.get()
             if selected_port and selected_port != "No Devices Found":
                 success = self.engine.start(selected_port)
                 if success:
                     self._save_config()
-                    self.connect_btn.configure(text="Disconnect", fg_color="#DC3545", hover_color="#C82333")
-                    self.status_badge.configure(text="● CONNECTED & LISTENING", text_color="#00E5FF")
+                    self.connect_btn.configure(text="Disconnect", fg_color=NEU_DANGER, hover_color="#C53030")
+                    self.status_badge.configure(text="● CONNECTED & LISTENING", text_color=NEU_TEAL)
             else:
                 self.log_message("Please select a valid MIDI device port.")
 

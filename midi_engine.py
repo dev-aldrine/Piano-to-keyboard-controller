@@ -1,4 +1,4 @@
-﻿import ctypes
+import ctypes
 from ctypes import wintypes
 import time
 import gc
@@ -8,6 +8,7 @@ from pynput import keyboard as pynput_keyboard
 from keymap_config import KeymapManager, midi_note_to_name
 from keyboard_simulator import KeyboardSimulator
 from salamander_engine import SalamanderGrandPianoEngine
+from velocity_curve import transform_velocity
 
 winmm = getattr(ctypes.windll, 'winmm', None)
 
@@ -57,6 +58,7 @@ class MidiEngine:
 
         self.transpose: int = 0
         self.min_velocity: int = 1
+        self.velocity_curve: str = "linear"
 
         self.on_note_on_cb: Optional[Callable[[int, int, Optional[str]], None]] = None
         self.on_note_off_cb: Optional[Callable[[int, Optional[str]], None]] = None
@@ -168,7 +170,7 @@ class MidiEngine:
         # 1. Handle Note On (0x90)
         if msg_type == 0x90 and data2 >= self.min_velocity:
             note = data1
-            velocity = data2
+            velocity = transform_velocity(data2, self.velocity_curve)
             if self.piano_engine and self.piano_engine.enabled:
                 self.piano_engine.note_on(note + self.transpose, velocity)
 
