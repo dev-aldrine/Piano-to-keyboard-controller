@@ -62,6 +62,7 @@ class MidiEngine:
 
         self.on_note_on_cb: Optional[Callable[[int, int, Optional[str]], None]] = None
         self.on_note_off_cb: Optional[Callable[[int, Optional[str]], None]] = None
+        self.on_sustain_cb: Optional[Callable[[int], None]] = None
         self.on_log_cb: Optional[Callable[[str], None]] = None
         self.on_toggle_state_cb: Optional[Callable[[bool], None]] = None
 
@@ -205,3 +206,6 @@ class MidiEngine:
                 self.simulator.press_key(' ')
             else:
                 self.simulator.release_key(' ')
+
+            if self.on_sustain_cb:
+                self.on_sustain_cb(data2)

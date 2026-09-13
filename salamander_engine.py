@@ -1,4 +1,4 @@
-﻿import os
+import os
 import glob
 import threading
 import numpy as np
@@ -84,16 +84,54 @@ class SalamanderGrandPianoEngine:
         octave = int(name[idx:])
         return (octave + 1) * 12 + semis[note_letter] + acc
 
+    def _parse_audio_filename(self, fname: str) -> Tuple[Optional[int], str]:
+        fname = os.path.splitext(fname)[0]
+        # 1. Maestro format: mcg_mf_060 or mcg_f_060
+        if fname.startswith('mcg_'):
+            parts = fname.split('_')
+            if len(parts) >= 3:
+                layer = 'v14' if parts[1] in ['f', 'ff'] else 'v8'
+                try:
+                    return int(parts[2]), layer
+                except ValueError:
+                    return None, 'v8'
+        # 2. Headroom format: HEADROOM PIANO LEVEL2 CLOSE 60
+        if 'HEADROOM' in fname.upper():
+            parts = fname.split()
+            layer = 'v14' if any(p in fname.upper() for p in ['LEVEL4', 'LEVEL5', 'FORTE']) else 'v8'
+            try:
+                midi_num = int(parts[-1])
+                return midi_num, layer
+            except ValueError:
+                return None, 'v8'
+        # 3. Alesis formats: AGX 60, Bright 65, EP60, 8bh - 60, Grand 65
+        fname_upper = fname.upper()
+        if any(prefix in fname_upper for prefix in ['AGX', 'BRIGHT', 'EP', '8BH', 'GRAND']):
+            import re
+            numbers = re.findall(r'\d+', fname)
+            if numbers:
+                try:
+                    return int(numbers[-1]), 'v8'
+                except ValueError:
+                    pass
+        # 4. Salamander format: C4v8, Ds4v14, etc.
+        vel = 'v14' if 'v14' in fname else 'v8'
+        note_str = fname.replace(vel, '')
+        try:
+            return self._note_name_to_midi(note_str), vel
+        except Exception:
+            return None, 'v8'
+
     def _load_samples_into_ram(self):
-        flac_files = glob.glob(os.path.join(self.sample_dir, '*.flac'))
+        audio_files = glob.glob(os.path.join(self.sample_dir, '*.flac')) + glob.glob(os.path.join(self.sample_dir, '*.wav'))
         loaded_anchors = {}
 
-        for fpath in flac_files:
-            fname = os.path.basename(fpath).replace('.flac', '')
-            vel = 'v14' if 'v14' in fname else 'v8'
-            note_str = fname.replace(vel, '')
+        for fpath in audio_files:
+            fname = os.path.basename(fpath)
+            midi_num, vel = self._parse_audio_filename(fname)
+            if midi_num is None:
+                continue
             try:
-                midi_num = self._note_name_to_midi(note_str)
                 data, orig_sr = sf.read(fpath, dtype='float32')
                 if len(data.shape) == 1:
                     data = np.column_stack((data, data))
@@ -116,18 +154,33 @@ class SalamanderGrandPianoEngine:
             for vel_layer in ['v8', 'v14']:
                 if vel_layer in loaded_anchors[best_anchor]:
                     base_audio = loaded_anchors[best_anchor][vel_layer]
-                    if semi_diff == 0:
-                        self.samples[note][vel_layer] = base_audio
+                elif loaded_anchors[best_anchor]:
+                    base_audio = list(loaded_anchors[best_anchor].values())[0]
+                else:
+                    continue
+
+                if semi_diff == 0:
+                    self.samples[note][vel_layer] = base_audio
+                else:
+                    orig_len = len(base_audio)
+                    new_len = int(orig_len / pitch_ratio)
+                    if new_len > 0:
+                        indices = np.linspace(0, orig_len - 1, new_len)
+                        left = np.interp(indices, np.arange(orig_len), base_audio[:, 0])
+                        right = np.interp(indices, np.arange(orig_len), base_audio[:, 1])
+                        self.samples[note][vel_layer] = np.column_stack((left, right)).astype(np.float32)
                     else:
-                        orig_len = len(base_audio)
-                        new_len = int(orig_len / pitch_ratio)
-                        if new_len > 0:
-                            indices = np.linspace(0, orig_len - 1, new_len)
-                            left = np.interp(indices, np.arange(orig_len), base_audio[:, 0])
-                            right = np.interp(indices, np.arange(orig_len), base_audio[:, 1])
-                            self.samples[note][vel_layer] = np.column_stack((left, right)).astype(np.float32)
-                        else:
-                            self.samples[note][vel_layer] = base_audio
+                        self.samples[note][vel_layer] = base_audio
+
+    def set_soundbank(self, bank_name: str) -> bool:
+        new_dir = os.path.join(os.path.dirname(__file__), 'samples', bank_name)
+        if not os.path.exists(new_dir):
+            return False
+        with self.lock:
+            self.sample_dir = new_dir
+            self.samples.clear()
+            self._load_samples_into_ram()
+        return len(self.samples) > 0
 
     def _start_audio_stream(self):
         if self.stream:

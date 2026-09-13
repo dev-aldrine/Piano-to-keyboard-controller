@@ -11,13 +11,329 @@ const START_NOTE = 36;
 const END_NOTE = 96;
 const BLACK_KEY_OFFSETS = [1, 3, 6, 8, 10]; // Semitone offsets for C#, D#, F#, G#, A#
 
+// Full 88-Key MIDI Note to GLB Mesh Node Mapping (MIDI 21 / A0 to MIDI 108 / C8)
+const MIDI_TO_NODE_MAP = {
+  21: "white_A1",  22: "black_A#1", 23: "white_B1",  24: "white_C1",  25: "black_C#1",
+  26: "white_D1",  27: "black_D#1", 28: "white_E1",  29: "white_F1",  30: "black_F#1",
+  31: "white_G1",  32: "black_G#1", 33: "white_A2",  34: "black_A#2", 35: "white_B2",
+  36: "white_C2",  37: "black_C#2", 38: "white_D2",  39: "black_D#2", 40: "white_E2",
+  41: "white_F2",  42: "black_F#2", 43: "white_G2",  44: "black_G#2", 45: "white_A3",
+  46: "black_A#3", 47: "white_B3",  48: "white_C3",  49: "black_C#3", 50: "white_D3",
+  51: "black_D#3", 52: "white_E3",  53: "white_F3",  54: "black_F#3", 55: "white_G3",
+  56: "black_G#3", 57: "white_A4",  58: "black_A#4", 59: "white_B4",  60: "white_C4",
+  61: "black_C#4", 62: "white_D4",  63: "black_D#4", 64: "white_E4",  65: "white_F4",
+  66: "black_F#4", 67: "white_G4",  68: "black_G#4", 69: "white_A5",  70: "black_A#5",
+  71: "white_B5",  72: "white_C5",  73: "black_C#5", 74: "white_D5",  75: "black_D#5",
+  76: "white_E5",  77: "white_F5",  78: "black_F#5", 79: "white_G5",  80: "black_G#5",
+  81: "white_A6",  82: "black_A#6", 83: "white_B6",  84: "white_C6",  85: "black_C#6",
+  86: "white_D6",  87: "black_D#6", 88: "white_E6",  89: "white_F6",  90: "black_F#6",
+  91: "white_G6",  92: "black_G#6", 93: "white_A7",  94: "black_A#7", 95: "white_B7",
+  96: "white_C7",  97: "black_C#7", 98: "white_D7",  99: "black_D#7", 100: "white_E7",
+  101: "white_F7", 102: "black_F#7", 103: "white_G7", 104: "black_G#7", 105: "white_A8",
+  106: "black_A#8", 107: "white_B8", 108: "white_C8"
+};
+
+// 3D Visualizer State
+let threeScene, threeCamera, threeRenderer, threeControls;
+let pianoModel = null;
+const keyMeshMap = {};        // midiNote -> THREE.Object3D
+const keyRestTransforms = {};  // midiNote -> { rotX, posY }
+const activeKeyAnimations = {};// midiNote -> { targetDip: number, currentDip: number }
+let currentVisualizerMode = '3d';
+
 document.addEventListener('DOMContentLoaded', () => {
   renderPianoKeyboard();
+  initThreePianoVisualizer();
+
   // Wait for pywebview API to be ready
   window.addEventListener('pywebviewready', () => {
     initBackend();
   });
 });
+
+/**
+ * Initialize 3D Three.js Scene for 88-Key Grand Piano
+ */
+function initThreePianoVisualizer() {
+  const canvas = document.getElementById('threeCanvas');
+  const container = document.getElementById('piano3DViewport');
+  if (!canvas || !container) return;
+
+  const width = container.clientWidth || 800;
+  const height = container.clientHeight || 220;
+
+  // Scene
+  threeScene = new THREE.Scene();
+  threeScene.background = new THREE.Color(0xE0E5EC);
+
+  // Camera
+  threeCamera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+  // Default perspective angle focused on center of keyboard
+  threeCamera.position.set(0.0, 2.2, 3.2);
+
+  // Renderer
+  threeRenderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+  threeRenderer.setSize(width, height);
+  threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+  threeRenderer.toneMappingExposure = 1.15;
+  threeRenderer.shadowMap.enabled = true;
+  threeRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  // OrbitControls
+  if (typeof THREE.OrbitControls !== 'undefined') {
+    threeControls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+    threeControls.enableDamping = true;
+    threeControls.dampingFactor = 0.08;
+    threeControls.target.set(0.0, 0.25, 0.0);
+    threeControls.maxPolarAngle = Math.PI / 2 + 0.05;
+    threeControls.minDistance = 1.0;
+    threeControls.maxDistance = 8.0;
+    threeControls.update();
+  }
+
+  // Soft Studio Lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+  threeScene.add(ambientLight);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  keyLight.position.set(-1.5, 5, 4);
+  threeScene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0x9fa8da, 0.45);
+  fillLight.position.set(3, 3, 2);
+  threeScene.add(fillLight);
+
+  const backLight = new THREE.DirectionalLight(0xb0bec5, 0.35);
+  backLight.position.set(-5, 3, -3);
+  threeScene.add(backLight);
+
+  // Load GLB Model
+  loadPianoModel();
+
+  // Animation Loop
+  function animate() {
+    requestAnimationFrame(animate);
+    updateKeyAnimations();
+    if (threeControls) threeControls.update();
+    threeRenderer.render(threeScene, threeCamera);
+  }
+  animate();
+
+  // Resize handler
+  window.addEventListener('resize', onThreeResize);
+}
+
+/**
+ * Handle canvas resize
+ */
+function onThreeResize() {
+  const container = document.getElementById('piano3DViewport');
+  if (!container || !threeCamera || !threeRenderer) return;
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  if (width === 0 || height === 0) return;
+
+  threeCamera.aspect = width / height;
+  threeCamera.updateProjectionMatrix();
+  threeRenderer.setSize(width, height);
+}
+
+/**
+ * Load GLB 88-Key Grand Piano model
+ */
+function loadPianoModel() {
+  if (typeof THREE.GLTFLoader === 'undefined') {
+    console.warn('GLTFLoader not loaded yet.');
+    return;
+  }
+
+  const loader = new THREE.GLTFLoader();
+  loader.load(
+    'model.glb',
+    (gltf) => {
+      pianoModel = gltf.scene;
+      threeScene.add(pianoModel);
+
+      // Build node map for rapid note lookups
+      const nodeDict = {};
+      pianoModel.traverse((child) => {
+        if (child.name) {
+          nodeDict[child.name] = child;
+        }
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          if (child.material) {
+            child.material = child.material.clone();
+            child.material.roughness = 0.35;
+          }
+        }
+      });
+
+      // Map MIDI numbers (21 to 108) to corresponding Key Nodes using their native model pivots
+      for (const [midiStr, nodeName] of Object.entries(MIDI_TO_NODE_MAP)) {
+        const midiNum = parseInt(midiStr, 10);
+        const node = nodeDict[nodeName];
+        if (node) {
+          const isBlack = nodeName.startsWith('black_');
+          keyMeshMap[midiNum] = {
+            node: node,
+            origRotX: node.rotation.x,
+            isBlack: isBlack
+          };
+          activeKeyAnimations[midiNum] = { targetDip: 0, currentDip: 0 };
+        }
+      }
+
+      // Hide loading overlay
+      const overlay = document.getElementById('modelLoadingOverlay');
+      if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.style.display = 'none', 400);
+      }
+    },
+    (xhr) => {
+      // Progress
+    },
+    (error) => {
+      console.error('Error loading 3D piano model:', error);
+      const overlay = document.getElementById('modelLoadingOverlay');
+      if (overlay) overlay.innerText = 'Unable to load 3D Piano Model';
+    }
+  );
+}
+
+/**
+ * Camera Presets (Perspective, Top, Player)
+ */
+function setCameraPreset(preset) {
+  if (!threeCamera || !threeControls) return;
+
+  const targetCenter = new THREE.Vector3(0.0, 0.25, 0.0);
+  threeControls.target.copy(targetCenter);
+
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+
+  if (preset === 'perspective') {
+    threeCamera.position.set(0.0, 2.2, 3.2);
+    document.querySelectorAll('.view-btn')[0]?.classList.add('active');
+  } else if (preset === 'top') {
+    threeCamera.position.set(0.0, 4.2, 0.1);
+    document.querySelectorAll('.view-btn')[1]?.classList.add('active');
+  } else if (preset === 'player') {
+    threeCamera.position.set(0.0, 1.2, 2.2);
+    document.querySelectorAll('.view-btn')[2]?.classList.add('active');
+  }
+  threeControls.update();
+}
+
+function reset3DCamera() {
+  setCameraPreset('perspective');
+}
+
+/**
+ * Switch Visualizer Mode (3D vs 2D)
+ */
+function switchVisualizerMode(mode) {
+  currentVisualizerMode = mode;
+  const view3D = document.getElementById('piano3DViewport');
+  const view2D = document.getElementById('piano2DViewport');
+  const btn3D = document.getElementById('btnMode3D');
+  const btn2D = document.getElementById('btnMode2D');
+  const badge = document.getElementById('visualizerModeBadge');
+  const camControls = document.getElementById('cameraControls3D');
+
+  if (mode === '3d') {
+    view3D.style.display = 'block';
+    view2D.style.display = 'none';
+    btn3D.classList.add('active');
+    btn2D.classList.remove('active');
+    if (camControls) camControls.style.display = 'flex';
+    if (badge) badge.innerText = '3D GRAND 88-KEY';
+    setTimeout(onThreeResize, 50);
+  } else {
+    view3D.style.display = 'none';
+    view2D.style.display = 'block';
+    btn2D.classList.add('active');
+    btn3D.classList.remove('active');
+    if (camControls) camControls.style.display = 'none';
+    if (badge) badge.innerText = '2D KEYMAP 61-KEY';
+  }
+}
+
+/**
+ * Smooth Realistic Key Pivot Rotation Animation Loop
+ * Key rotates downward around the updated native node pivot
+ */
+function updateKeyAnimations() {
+  const whiteDipAngle = -0.11; // ~6.3 degrees downward rotation for distinct visual keystrokes
+  const blackDipAngle = -0.09; // ~5.2 degrees downward rotation for black keys
+  const lerpSpeed = 0.38;
+
+  for (const [midiStr, anim] of Object.entries(activeKeyAnimations)) {
+    const midi = parseInt(midiStr, 10);
+    const keyData = keyMeshMap[midi];
+    if (!keyData || !keyData.node) continue;
+
+    const maxDip = keyData.isBlack ? blackDipAngle : whiteDipAngle;
+    const baseRotX = keyData.origRotX || 0;
+
+    // Smoothly interpolate current dip to target dip
+    if (Math.abs(anim.currentDip - anim.targetDip) > 0.0005) {
+      anim.currentDip += (anim.targetDip - anim.currentDip) * lerpSpeed;
+      keyData.node.rotation.x = baseRotX + (anim.currentDip * maxDip);
+    } else if (anim.currentDip !== anim.targetDip) {
+      anim.currentDip = anim.targetDip;
+      keyData.node.rotation.x = baseRotX + (anim.targetDip * maxDip);
+    }
+  }
+}
+
+/**
+ * 3D Key Trigger Action with Vibrant Illumination Glow
+ */
+function trigger3DKey(note, isPressed) {
+  const anim = activeKeyAnimations[note];
+  const keyData = keyMeshMap[note];
+  if (anim) {
+    anim.targetDip = isPressed ? 1.0 : 0.0;
+  }
+
+  // Highlight key mesh with vibrant emissive illumination glow
+  if (keyData && keyData.node) {
+    const isBlack = keyData.isBlack;
+    // Radiant violet glow for white keys, cyan/violet illumination for black keys
+    const glowColor = isBlack ? new THREE.Color(0x8B84FF) : new THREE.Color(0x6C63FF);
+    const glowIntensity = isBlack ? 1.4 : 1.1;
+
+    keyData.node.traverse((child) => {
+      if (child.isMesh && child.material) {
+        if (!child.userData.origMatSetup) {
+          child.userData.origMatSetup = true;
+          child.userData.origColor = child.material.color ? child.material.color.clone() : new THREE.Color(0xffffff);
+          child.userData.origEmissive = child.material.emissive ? child.material.emissive.clone() : new THREE.Color(0x000000);
+        }
+
+        if (isPressed) {
+          child.material.emissive = glowColor;
+          child.material.emissiveIntensity = glowIntensity;
+          if (child.material.color) {
+            child.material.color.set(isBlack ? 0x9fa8da : 0xd1c4e9);
+          }
+        } else {
+          if (child.userData.origEmissive) {
+            child.material.emissive.copy(child.userData.origEmissive);
+            child.material.emissiveIntensity = 0.0;
+          }
+          if (child.userData.origColor && child.material.color) {
+            child.material.color.copy(child.userData.origColor);
+          }
+        }
+      }
+    });
+  }
+}
 
 /**
  * Toggle Left-Hand Controls Sidebar
@@ -111,6 +427,9 @@ async function initBackend() {
       populateSelect('vmicDeviceSelect', initData.all_audio_devices, initData.current_vmic_dev);
 
       // Set switches & sliders
+      if (initData.current_soundbank) {
+        document.getElementById('soundbankSelect').value = initData.current_soundbank;
+      }
       document.getElementById('pianoSoundSwitch').checked = initData.piano_sound_enabled;
       document.getElementById('pianoVolSlider').value = Math.round(initData.piano_volume * 100);
       document.getElementById('pianoVolVal').innerText = `${Math.round(initData.piano_volume * 100)}%`;
@@ -131,6 +450,16 @@ async function initBackend() {
       const savedCurve = initData.velocity_curve || 'linear';
       document.getElementById('velocityCurveSelect').value = savedCurve;
       updateVelocityCurveDisplay(savedCurve);
+
+      // WebSocket status
+      if (initData.ws_server_url) {
+        const endpointEl = document.getElementById('wsEndpointText');
+        if (endpointEl) endpointEl.innerText = initData.ws_server_url;
+      }
+      if (typeof initData.ws_clients_count !== 'undefined') {
+        const countBadge = document.getElementById('wsClientsCountBadge');
+        if (countBadge) countBadge.innerText = `${initData.ws_clients_count} Connected`;
+      }
 
       updateConnectionBadge(initData.is_connected);
     }
@@ -302,17 +631,23 @@ function updateKeymapDisplay() {
 /* ================= PyWebView Events Called From Python ================= */
 
 window.py_onNoteOn = function(note) {
+  // Trigger 2D Visualizer
   const keyEl = document.getElementById(`key-${note}`);
   if (keyEl) {
     keyEl.classList.add('active');
   }
+  // Trigger 3D 88-Key Model
+  trigger3DKey(note, true);
 };
 
 window.py_onNoteOff = function(note) {
+  // Trigger 2D Visualizer
   const keyEl = document.getElementById(`key-${note}`);
   if (keyEl) {
     keyEl.classList.remove('active');
   }
+  // Trigger 3D 88-Key Model
+  trigger3DKey(note, false);
 };
 
 window.py_onLog = function(msg) {
@@ -349,6 +684,13 @@ window.py_onToggleKeystrokes = function(enabled) {
   document.getElementById('keystrokeSwitch').checked = enabled;
 };
 
+window.py_onWsClientsChanged = function(count) {
+  const countBadge = document.getElementById('wsClientsCountBadge');
+  if (countBadge) {
+    countBadge.innerText = `${count} Connected`;
+  }
+};
+
 /* ================= User Actions (Calls to Python) ================= */
 
 async function toggleConnection() {
@@ -383,6 +725,11 @@ async function refreshMidiPorts() {
 
 function onMidiPortChanged() {
   window.pywebview.api.save_setting('last_midi_port', document.getElementById('midiPortSelect').value);
+}
+
+function onSoundbankChanged() {
+  const bank = document.getElementById('soundbankSelect').value;
+  window.pywebview.api.set_soundbank(bank);
 }
 
 function togglePianoSound() {

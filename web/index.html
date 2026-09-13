@@ -9,6 +9,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <!-- Three.js 3D Grand Piano Engine -->
+  <script src="libs/three.min.js"></script>
+  <script src="libs/OrbitControls.js"></script>
+  <script src="libs/GLTFLoader.js"></script>
 </head>
 <body>
   <div class="app-container">
@@ -80,6 +84,19 @@
               </label>
             </div>
 
+            <label class="control-label">Grand Piano Instrument</label>
+            <div class="neu-select-wrapper">
+              <select id="soundbankSelect" class="neu-select" onchange="onSoundbankChanged()">
+                <option value="salamander">Yamaha C5 Grand (Salamander)</option>
+                <option value="maestro">Steinway Model B (Maestro Concert)</option>
+                <option value="headroom">Headroom Studio Grand (Bengt Nilsson)</option>
+                <option value="alesis_grand_x">Alesis Grand X Piano</option>
+                <option value="alesis_bright">Alesis Bright Piano</option>
+                <option value="alesis_ep">Alesis Electric Piano</option>
+                <option value="alesis_harpsichord">Alesis Harpsichord</option>
+              </select>
+            </div>
+
             <label class="control-label">Audio Device (WASAPI Low-Latency)</label>
             <div class="neu-select-wrapper">
               <select id="audioDeviceSelect" class="neu-select" onchange="onAudioDeviceChanged()">
@@ -126,6 +143,32 @@
               </div>
               <input type="range" id="vmicVolSlider" class="neu-range range-teal" min="0" max="100" value="85" oninput="onVmicVolChanged(this.value)" />
             </div>
+          </div>
+        </div>
+
+        <!-- Card 3.5: WebSocket Web MIDI Broadcaster (PianoWeb Bridge) -->
+        <div class="neu-card">
+          <div class="card-header space-between">
+            <div class="header-inline">
+              <span class="card-icon">🌐</span>
+              <h2 class="card-title accent-teal">WEB MIDI BROADCAST</h2>
+            </div>
+            <span id="wsStatusBadge" class="val-badge badge-teal">Active</span>
+          </div>
+          <div class="card-body">
+            <div class="ws-info-row">
+              <div class="ws-url-box neu-inset-sm">
+                <span class="ws-url-label">Endpoint:</span>
+                <span id="wsEndpointText" class="ws-url-val">ws://localhost:8765</span>
+              </div>
+            </div>
+            <div class="ws-status-meta">
+              <span class="control-label">Connected Web Clients:</span>
+              <span id="wsClientsCountBadge" class="val-badge badge-teal">0 Connected</span>
+            </div>
+            <p class="ws-hint-text">
+              ✨ Seamlessly channels real-time keyboard and MIDI player playback into <strong>PianoWeb</strong> with zero software drivers.
+            </p>
           </div>
         </div>
 
@@ -193,16 +236,40 @@
       <!-- Right Column: Visualizer, Song Player & Console -->
       <section class="right-panel">
         
-        <!-- Live 61-Key Piano Visualizer Card -->
+        <!-- Live Piano Visualizer Card (3D 88-Key Grand Piano & 2D Keymap) -->
         <div class="neu-card visualizer-card">
           <div class="card-header space-between">
             <div class="header-inline">
               <span class="card-icon">🎹</span>
-              <h2 class="card-title">LIVE 61-KEY PIANO VISUALIZER</h2>
+              <h2 class="card-title">PIANO VISUALIZER <span id="visualizerModeBadge" class="mode-badge">3D GRAND 88-KEY</span></h2>
             </div>
-            <span class="badge-subtle">HZWU • Neumorphic Engine</span>
+            <div class="visualizer-header-controls">
+              <!-- View Switchers for 3D Scene -->
+              <div id="cameraControls3D" class="view-btn-group">
+                <button class="view-btn" onclick="setCameraPreset('perspective')" title="Isometric 3D Angle">Perspective</button>
+                <button class="view-btn" onclick="setCameraPreset('top')" title="Top-Down Overhead View">Top</button>
+                <button class="view-btn" onclick="setCameraPreset('player')" title="First-Person Pianist Angle">Player</button>
+                <button class="view-btn" onclick="reset3DCamera()" title="Reset Camera View">⟲</button>
+              </div>
+              <!-- Toggle 3D / 2D -->
+              <div class="toggle-pill-group">
+                <button id="btnMode3D" class="toggle-pill active" onclick="switchVisualizerMode('3d')">3D Model</button>
+                <button id="btnMode2D" class="toggle-pill" onclick="switchVisualizerMode('2d')">2D Map</button>
+              </div>
+            </div>
           </div>
-          <div class="piano-viewport neu-inset-deep">
+
+          <!-- 3D Three.js Viewport -->
+          <div id="piano3DViewport" class="piano-viewport-3d neu-inset-deep">
+            <canvas id="threeCanvas"></canvas>
+            <div id="modelLoadingOverlay" class="model-loading-overlay">
+              <div class="spinner-dot"></div>
+              <span>Loading 88-Key 3D Grand Piano...</span>
+            </div>
+          </div>
+
+          <!-- 2D Keymap Viewport -->
+          <div id="piano2DViewport" class="piano-viewport neu-inset-deep" style="display: none;">
             <div id="pianoKeyboard" class="piano-keys-container"></div>
           </div>
         </div>

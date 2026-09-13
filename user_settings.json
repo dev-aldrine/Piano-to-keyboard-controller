@@ -2,15 +2,16 @@
     "last_midi_port": "CASIO USB-MIDI",
     "last_audio_device": "Realtek HD Audio 2nd output (Realtek(R) Audio) [Windows WASAPI]",
     "piano_sound_enabled": true,
-    "piano_volume": 0.79,
+    "piano_volume": 0.96,
     "virtual_mic_enabled": false,
     "last_virtual_mic_device": "Microsoft Sound Mapper - Output [MME]",
-    "virtual_mic_volume": 0.85,
+    "virtual_mic_volume": 0.89,
     "keystrokes_enabled": false,
     "transpose": 0,
     "logging_enabled": true,
     "input_mode": "VIRTUAL_KEY",
     "trigger_type": "HOLD",
-    "auto_connect": true,
-    "velocity_curve": "ease_in_out"
+    "auto_connect": false,
+    "velocity_curve": "linear",
+    "soundbank": "salamander"
 }

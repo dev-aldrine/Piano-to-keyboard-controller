@@ -33,6 +33,7 @@ class MidiFilePlayer:
         # Callbacks for UI updates
         self.on_note_on_cb: Optional[Callable[[int, int, Optional[str]], None]] = None
         self.on_note_off_cb: Optional[Callable[[int, Optional[str]], None]] = None
+        self.on_sustain_cb: Optional[Callable[[int], None]] = None
         self.on_progress_cb: Optional[Callable[[float, float], None]] = None
         self.on_playback_finished_cb: Optional[Callable[[], None]] = None
         self.on_log_cb: Optional[Callable[[str], None]] = None
@@ -167,6 +168,8 @@ class MidiFilePlayer:
                         self.simulator.press_key(' ')
                     else:
                         self.simulator.release_key(' ')
+                    if self.on_sustain_cb:
+                        self.on_sustain_cb(msg.value)
 
         except Exception as e:
             self._log(f'Playback error: {e}')
